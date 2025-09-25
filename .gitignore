@@ -1,0 +1,22 @@
+# Build and dependency artifacts
+node_modules/
+.next/
+.swc/
+.vercel/
+
+# Environment files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# IDE files
+.vscode/
+.idea/
