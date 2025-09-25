@@ -41,6 +41,10 @@ export class TraineeService {
     invitationData: TraineeInvitationFormData
   ): Promise<string> {
     try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
+
       // Check if trainee with this email already exists for this trainer
       const existingTraineeQuery = query(
         collection(db, TRAINEES_COLLECTION),
@@ -109,7 +113,7 @@ export class TraineeService {
 
       // Send invitation email via server API (non-blocking for UX)
       try {
-        const trainerName = auth.currentUser?.displayName || 'Your Trainer';
+        const trainerName = auth?.currentUser?.displayName || 'Your Trainer';
         void fetch('/api/email/invite', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -142,6 +146,9 @@ export class TraineeService {
   // Get all trainees for a trainer
   static async getTraineesByTrainer(trainerId: string): Promise<Trainee[]> {
     try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
       const traineesQuery = query(
         collection(db, TRAINEES_COLLECTION),
         where('trainerId', '==', trainerId),
@@ -165,6 +172,9 @@ export class TraineeService {
   // Get trainee by ID
   static async getTraineeById(traineeId: string): Promise<Trainee | null> {
     try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
       const docRef = doc(db, TRAINEES_COLLECTION, traineeId);
       const docSnap = await getDoc(docRef);
 
@@ -182,6 +192,9 @@ export class TraineeService {
   // Update trainee
   static async updateTrainee(traineeId: string, updates: Partial<Trainee>): Promise<void> {
     try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
       const docRef = doc(db, TRAINEES_COLLECTION, traineeId);
       await updateDoc(docRef, { ...updates, updatedAt: new Date().toISOString() });
     } catch (error) {
@@ -193,6 +206,9 @@ export class TraineeService {
   // Delete trainee
   static async deleteTrainee(traineeId: string): Promise<void> {
     try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
       // Fetch trainee to get trainerId and email for invitation cleanup
       const traineeRef = doc(db, TRAINEES_COLLECTION, traineeId);
       const traineeSnap = await getDoc(traineeRef);
@@ -215,7 +231,7 @@ export class TraineeService {
           const allInvitesSnap = await getDocs(allInvitesQuery);
           const deletePromises: Promise<void>[] = [];
           allInvitesSnap.forEach((inviteDoc) => {
-            deletePromises.push(deleteDoc(doc(db, TRAINEE_INVITATIONS_COLLECTION, inviteDoc.id)));
+            deletePromises.push(deleteDoc(inviteDoc.ref));
           });
           if (deletePromises.length > 0) {
             await Promise.all(deletePromises);
@@ -234,6 +250,9 @@ export class TraineeService {
   // Get invitation by token (for signup process)
   static async getInvitationByToken(token: string): Promise<TraineeInvitationRecord | null> {
     try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
       const invitationQuery = query(
         collection(db, TRAINEE_INVITATIONS_COLLECTION),
         where('inviteToken', '==', token),
@@ -268,6 +287,9 @@ export class TraineeService {
     userId: string
   ): Promise<void> {
     try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
       // Update invitation status
       const invitationRef = doc(db, TRAINEE_INVITATIONS_COLLECTION, invitationId);
       await updateDoc(invitationRef, {
@@ -301,6 +323,9 @@ export class TraineeService {
   // Expire invitation
   static async expireInvitation(invitationId: string): Promise<void> {
     try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
       const invitationRef = doc(db, TRAINEE_INVITATIONS_COLLECTION, invitationId);
       await updateDoc(invitationRef, {
         status: 'expired',
@@ -314,6 +339,9 @@ export class TraineeService {
   // Resend invitation (generates new token and extends expiry)
   static async resendInvitation(invitationId: string): Promise<string> {
     try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
       const newToken = generateInviteToken();
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
 
@@ -335,6 +363,9 @@ export class TraineeService {
   // Get pending invitations for a trainer
   static async getPendingInvitations(trainerId: string): Promise<TraineeInvitationRecord[]> {
     try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
       const invitationsQuery = query(
         collection(db, TRAINEE_INVITATIONS_COLLECTION),
         where('trainerId', '==', trainerId),

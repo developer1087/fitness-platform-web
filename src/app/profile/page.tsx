@@ -140,20 +140,20 @@ export default function ProfilePage() {
 
     try {
       // Update display name if it changed
-      if (user.displayName !== `${formData.firstName} ${formData.lastName}`) {
+      if (auth && user.displayName !== `${formData.firstName} ${formData.lastName}`) {
         await updateProfile(auth.currentUser!, {
           displayName: `${formData.firstName} ${formData.lastName}`
         });
       }
 
       // Update email if it changed
-      if (user.email !== formData.email) {
+      if (auth && user.email !== formData.email) {
         await updateEmail(auth.currentUser!, formData.email);
         setShowEmailVerification(true);
       }
 
       // Update profile image if it changed
-      if (profileImage && profileImage !== user.photoURL) {
+      if (auth && profileImage && profileImage !== user.photoURL) {
         await updateProfile(auth.currentUser!, {
           photoURL: profileImage
         });
@@ -177,6 +177,10 @@ export default function ProfilePage() {
     setSuccess('');
 
     try {
+      if (!auth) {
+        throw new Error('Firebase Auth not initialized');
+      }
+
       // Re-authenticate user before changing password
       const credential = EmailAuthProvider.credential(
         user.email!,
@@ -208,6 +212,9 @@ export default function ProfilePage() {
   const handleSendEmailVerification = async () => {
     setLoading(true);
     try {
+      if (!auth) {
+        throw new Error('Firebase Auth not initialized');
+      }
       await sendEmailVerification(auth.currentUser!);
       setEmailVerificationSent(true);
       setSuccess('Verification email sent! Please check your inbox.');

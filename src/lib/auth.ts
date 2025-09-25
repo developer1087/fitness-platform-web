@@ -16,6 +16,9 @@ import type { User, LoginCredentials, SignupCredentials, UserProfile } from '../
 export const authService = {
   // Sign in with email and password
   async signIn(credentials: LoginCredentials): Promise<User> {
+    if (!auth) {
+      throw new Error('Firebase Auth not initialized');
+    }
     const { email, password } = credentials;
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     return await this.createUserObject(userCredential.user);
@@ -23,6 +26,9 @@ export const authService = {
 
   // Sign in with Google
   async signInWithGoogle(): Promise<User> {
+    if (!auth) {
+      throw new Error('Firebase Auth not initialized');
+    }
     const provider = new GoogleAuthProvider();
     const userCredential = await signInWithPopup(auth, provider);
     const firebaseUser = userCredential.user;
@@ -58,6 +64,9 @@ export const authService = {
 
   // Sign up with email and password
   async signUp(credentials: SignupCredentials): Promise<User> {
+    if (!auth) {
+      throw new Error('Firebase Auth not initialized');
+    }
     const { email, password, firstName, lastName } = credentials;
 
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -90,16 +99,25 @@ export const authService = {
 
   // Sign out
   async signOut(): Promise<void> {
+    if (!auth) {
+      throw new Error('Firebase Auth not initialized');
+    }
     await signOut(auth);
   },
 
   // Send password reset email
   async resetPassword(email: string): Promise<void> {
+    if (!auth) {
+      throw new Error('Firebase Auth not initialized');
+    }
     await sendPasswordResetEmail(auth, email);
   },
 
   // Create user profile in Firestore
   async createUserProfile(uid: string, profile: UserProfile): Promise<void> {
+    if (!db) {
+      throw new Error('Firebase Firestore not initialized');
+    }
     const userDoc = doc(db, 'users', uid);
     await setDoc(userDoc, {
       ...profile,
@@ -111,12 +129,18 @@ export const authService = {
 
   // Update user profile
   async updateUserProfile(uid: string, updates: Partial<UserProfile>): Promise<void> {
+    if (!db) {
+      throw new Error('Firebase Firestore not initialized');
+    }
     const userDoc = doc(db, 'users', uid);
     await updateDoc(userDoc, updates);
   },
 
   // Get user profile from Firestore
   async getUserProfile(uid: string): Promise<UserProfile | null> {
+    if (!db) {
+      return null;
+    }
     const userDoc = doc(db, 'users', uid);
     const docSnap = await getDoc(userDoc);
 

@@ -13,42 +13,58 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
-let app;
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApps()[0];
+// Initialize Firebase only if we have valid configuration
+function initializeFirebase() {
+  // Check if we're in a build environment or missing required config
+  if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+    console.warn('Firebase configuration missing, skipping initialization');
+    return null;
+  }
+
+  if (getApps().length === 0) {
+    return initializeApp(firebaseConfig);
+  } else {
+    return getApps()[0];
+  }
 }
 
-// Initialize Firebase services
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+// Initialize Firebase app
+const app = initializeFirebase();
+
+// Initialize Firebase services with safety checks
+export const auth = app ? getAuth(app) : null;
+export const db = app ? getFirestore(app) : null;
+export const storage = app ? getStorage(app) : null;
 
 // Connect to emulators in development - must be done before any operations
-if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined' && app) {
   // Use a flag to ensure we only connect once
   if (!(globalThis as any).__FIREBASE_EMULATOR_CONNECTED__) {
-    try {
-      connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
-      console.log('✅ Connected to Auth emulator');
-    } catch (error) {
-      console.log('Auth emulator connection:', error);
+    if (auth) {
+      try {
+        connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+        console.log('✅ Connected to Auth emulator');
+      } catch (error) {
+        console.log('Auth emulator connection:', error);
+      }
     }
 
-    try {
-      connectFirestoreEmulator(db, 'localhost', 8081);
-      console.log('✅ Connected to Firestore emulator');
-    } catch (error) {
-      console.log('Firestore emulator connection:', error);
+    if (db) {
+      try {
+        connectFirestoreEmulator(db, 'localhost', 8081);
+        console.log('✅ Connected to Firestore emulator');
+      } catch (error) {
+        console.log('Firestore emulator connection:', error);
+      }
     }
 
-    try {
-      connectStorageEmulator(storage, 'localhost', 9199);
-      console.log('✅ Connected to Storage emulator');
-    } catch (error) {
-      console.log('Storage emulator connection:', error);
+    if (storage) {
+      try {
+        connectStorageEmulator(storage, 'localhost', 9199);
+        console.log('✅ Connected to Storage emulator');
+      } catch (error) {
+        console.log('Storage emulator connection:', error);
+      }
     }
 
     (globalThis as any).__FIREBASE_EMULATOR_CONNECTED__ = true;
