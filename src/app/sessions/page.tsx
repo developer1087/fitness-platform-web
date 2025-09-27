@@ -1,10 +1,122 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import TrainerLayout from '../../components/TrainerLayout';
+import { SessionService } from '../../lib/sessionService';
+import { TraineeService } from '../../lib/traineeService';
+import type { TrainingSession, CreateSessionFormData } from '../../shared-types/trainer-sessions';
+import type { Trainee } from '../../shared-types';
 
 export default function SessionsPage() {
   const { user } = useAuth();
+  const [sessions, setSessions] = useState<TrainingSession[]>([]);
+  const [trainees, setTrainees] = useState<Trainee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'today' | 'upcoming' | 'completed'>('today');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Load data
+  useEffect(() => {
+    if (user?.uid) {
+      loadSessions();
+      loadTrainees();
+    }
+  }, [user, activeTab]);
+
+  const loadSessions = async () => {
+    if (!user?.uid) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      let sessionData: TrainingSession[] = [];
+
+      switch (activeTab) {
+        case 'today':
+          sessionData = await SessionService.getTodaySessions(user.uid);
+          break;
+        case 'upcoming':
+          sessionData = await SessionService.getUpcomingSessions(user.uid);
+          break;
+        case 'completed':
+          sessionData = await SessionService.getTrainerSessions(user.uid, { status: 'completed', limit: 20 });
+          break;
+        default:
+          sessionData = await SessionService.getTrainerSessions(user.uid, { limit: 50 });
+      }
+
+      setSessions(sessionData);
+    } catch (err) {
+      console.error('Error loading sessions:', err);
+      setError('Failed to load sessions');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadTrainees = async () => {
+    if (!user?.uid) return;
+
+    try {
+      const traineeData = await TraineeService.getTraineesByTrainer(user.uid);
+      setTrainees(traineeData.filter(t => t.status === 'active'));
+    } catch (err) {
+      console.error('Error loading trainees:', err);
+    }
+  };
+
+  const handleCreateSession = async (sessionData: CreateSessionFormData) => {
+    if (!user?.uid) return;
+
+    try {
+      await SessionService.createSession(user.uid, sessionData);
+      setShowCreateModal(false);
+      loadSessions(); // Refresh the list
+    } catch (err) {
+      console.error('Error creating session:', err);
+      setError('Failed to create session');
+    }
+  };
+
+  const handleStatusUpdate = async (sessionId: string, status: TrainingSession['status']) => {
+    try {
+      await SessionService.updateSessionStatus(sessionId, status);
+      loadSessions(); // Refresh the list
+    } catch (err) {
+      console.error('Error updating session status:', err);
+      setError('Failed to update session');
+    }
+  };
+
+  const getStatusBadge = (status: TrainingSession['status']) => {
+    const styles = {
+      scheduled: 'bg-blue-100 text-blue-800',
+      confirmed: 'bg-green-100 text-green-800',
+      in_progress: 'bg-orange-100 text-orange-800',
+      completed: 'bg-emerald-100 text-emerald-800',
+      cancelled: 'bg-red-100 text-red-800',
+      no_show: 'bg-gray-100 text-gray-800',
+      rescheduled: 'bg-yellow-100 text-yellow-800'
+    };
+    return styles[status] || styles.scheduled;
+  };
+
+  const getSessionTypeIcon = (type: string) => {
+    switch (type) {
+      case 'personal_training':
+        return '🏋️';
+      case 'group_training':
+        return '👥';
+      case 'assessment':
+        return '📊';
+      case 'consultation':
+        return '💬';
+      default:
+        return '📅';
+    }
+  };
 
   if (!user) {
     return <div className="flex items-center justify-center h-64">
@@ -26,10 +138,13 @@ export default function SessionsPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-gray-900">Training Sessions</h2>
             <button
-              disabled
-              className="bg-gray-300 text-gray-500 px-4 py-2 rounded-md cursor-not-allowed"
+              onClick={() => setShowCreateModal(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center"
             >
-              Create Session (Coming Soon)
+              <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Create Session
             </button>
           </div>
         </div>
@@ -37,158 +152,397 @@ export default function SessionsPage() {
 
       {/* Content */}
       <div className="p-6">
-        <div className="max-w-6xl mx-auto">
-          {/* Coming Soon Banner */}
-          <div className="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-lg p-8 text-center">
-            <div className="flex justify-center mb-4">
-              <svg className="w-16 h-16 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-md">
+            {error}
+          </div>
+        )}
+
+        {/* Tab Navigation */}
+        <div className="mb-6">
+          <nav className="flex space-x-8">
+            {[
+              { key: 'today', label: 'Today', count: sessions.filter(s => {
+                const today = new Date().toDateString();
+                return new Date(s.scheduledDate).toDateString() === today;
+              }).length },
+              { key: 'upcoming', label: 'Upcoming', count: sessions.filter(s =>
+                new Date(s.scheduledDate) > new Date() && s.status !== 'completed'
+              ).length },
+              { key: 'completed', label: 'Completed', count: sessions.filter(s => s.status === 'completed').length },
+              { key: 'all', label: 'All Sessions', count: sessions.length }
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as any)}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === tab.key
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${
+                    activeTab === tab.key ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-900'
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Sessions List */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
+              <p className="mt-2 text-gray-600">Loading sessions...</p>
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">Session Management Coming Soon! 💪</h3>
-            <p className="text-gray-700 mb-4 max-w-2xl mx-auto">
-              We're developing comprehensive session tracking and workout management tools to help you deliver
-              exceptional training experiences and monitor your clients' progress.
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="text-center py-12">
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No sessions found</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Get started by creating your first training session.
             </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-              <div className="bg-white p-4 rounded-lg shadow-sm border">
-                <h4 className="font-semibold text-gray-900 mb-2">📋 Session Planning</h4>
-                <p className="text-sm text-gray-600">Create detailed workout plans and exercise routines</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow-sm border">
-                <h4 className="font-semibold text-gray-900 mb-2">📊 Progress Tracking</h4>
-                <p className="text-sm text-gray-600">Monitor weights, reps, and performance improvements</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow-sm border">
-                <h4 className="font-semibold text-gray-900 mb-2">⏱️ Real-time Logging</h4>
-                <p className="text-sm text-gray-600">Log exercises and notes during sessions</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow-sm border">
-                <h4 className="font-semibold text-gray-900 mb-2">📈 Analytics</h4>
-                <p className="text-sm text-gray-600">Analyze session trends and client progress</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow-sm border">
-                <h4 className="font-semibold text-gray-900 mb-2">🎯 Exercise Database</h4>
-                <p className="text-sm text-gray-600">Access comprehensive exercise library</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow-sm border">
-                <h4 className="font-semibold text-gray-900 mb-2">📱 Mobile App</h4>
-                <p className="text-sm text-gray-600">Session logging on mobile devices</p>
-              </div>
+            <div className="mt-6">
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Create Session
+              </button>
             </div>
           </div>
+        ) : (
+          <div className="space-y-4">
+            {sessions.map((session) => {
+              const trainee = trainees.find(t => t.id === session.traineeId);
+              const sessionDate = new Date(session.scheduledDate);
+              const startTime = new Date(session.startTime);
 
-          {/* Session Overview */}
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Recent Sessions Preview */}
-            <div className="bg-white rounded-lg shadow-sm border">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Recent Sessions</h3>
-              </div>
-              <div className="p-6">
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="flex items-center p-4 bg-gray-50 rounded-lg">
-                      <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-                        <svg className="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div className="ml-4 flex-1">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-medium text-gray-900">Sample Session {i}</h4>
-                          <span className="text-xs text-gray-500">Preview Mode</span>
+              return (
+                <div key={session.id} className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3">
+                        <span className="text-2xl">{getSessionTypeIcon(session.type)}</span>
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">{session.title}</h3>
+                          <p className="text-sm text-gray-600">
+                            {trainee ? `${trainee.firstName} ${trainee.lastName}` : 'Unknown trainee'} • {session.type.replace('_', ' ')}
+                          </p>
                         </div>
-                        <p className="text-sm text-gray-600">Strength Training • 60 min</p>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="font-medium text-gray-500">Date & Time:</span>
+                          <p className="text-gray-900">
+                            {sessionDate.toLocaleDateString()} at {startTime.toLocaleTimeString('en-US', {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              hour12: true
+                            })}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-500">Duration:</span>
+                          <p className="text-gray-900">{session.duration} minutes</p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-500">Location:</span>
+                          <p className="text-gray-900">{session.location || 'Not specified'}</p>
+                        </div>
+                      </div>
+
+                      {session.description && (
+                        <div className="mt-3">
+                          <span className="font-medium text-gray-500 text-sm">Description:</span>
+                          <p className="text-gray-900 text-sm mt-1">{session.description}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col items-end space-y-3">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(session.status)}`}>
+                        {session.status.replace('_', ' ')}
+                      </span>
+
+                      <div className="flex space-x-2">
+                        {session.status === 'scheduled' && (
+                          <>
+                            <button
+                              onClick={() => handleStatusUpdate(session.id, 'in_progress')}
+                              className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 transition-colors"
+                            >
+                              Start
+                            </button>
+                            <button
+                              onClick={() => handleStatusUpdate(session.id, 'cancelled')}
+                              className="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                        {session.status === 'in_progress' && (
+                          <button
+                            onClick={() => handleStatusUpdate(session.id, 'completed')}
+                            className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 transition-colors"
+                          >
+                            Complete
+                          </button>
+                        )}
+                        <button className="text-gray-400 hover:text-gray-600 px-2 py-1">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                          </svg>
+                        </button>
                       </div>
                     </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Create Session Modal */}
+      {showCreateModal && (
+        <CreateSessionModal
+          trainees={trainees}
+          onClose={() => setShowCreateModal(false)}
+          onSubmit={handleCreateSession}
+        />
+      )}
+    </TrainerLayout>
+  );
+}
+
+// Create Session Modal Component
+interface CreateSessionModalProps {
+  trainees: Trainee[];
+  onClose: () => void;
+  onSubmit: (data: CreateSessionFormData) => void;
+}
+
+function CreateSessionModal({ trainees, onClose, onSubmit }: CreateSessionModalProps) {
+  const [formData, setFormData] = useState<CreateSessionFormData>({
+    traineeId: '',
+    title: '',
+    description: '',
+    type: 'personal_training',
+    scheduledDate: new Date().toISOString().split('T')[0],
+    startTime: '',
+    duration: 60,
+    location: '',
+    sessionRate: 0,
+    trainerNotes: ''
+  });
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Basic validation
+    const newErrors: Record<string, string> = {};
+    if (!formData.traineeId) newErrors.traineeId = 'Please select a trainee';
+    if (!formData.title) newErrors.title = 'Title is required';
+    if (!formData.startTime) newErrors.startTime = 'Start time is required';
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await onSubmit(formData);
+    } catch (err) {
+      console.error('Error submitting form:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-medium text-gray-900">Create Training Session</h3>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Trainee</label>
+                <select
+                  value={formData.traineeId}
+                  onChange={(e) => setFormData({ ...formData, traineeId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a trainee</option>
+                  {trainees.map((trainee) => (
+                    <option key={trainee.id} value={trainee.id}>
+                      {trainee.firstName} {trainee.lastName}
+                    </option>
                   ))}
-                </div>
+                </select>
+                {errors.traineeId && <p className="text-sm text-red-600 mt-1">{errors.traineeId}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Session Type</label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="personal_training">Personal Training</option>
+                  <option value="group_training">Group Training</option>
+                  <option value="assessment">Assessment</option>
+                  <option value="consultation">Consultation</option>
+                  <option value="follow_up">Follow-up</option>
+                </select>
               </div>
             </div>
 
-            {/* Session Stats */}
-            <div className="bg-white rounded-lg shadow-sm border">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Session Statistics</h3>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Session Title</label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder="e.g., Strength Training Session"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {errors.title && <p className="text-sm text-red-600 mt-1">{errors.title}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={3}
+                placeholder="Optional session description..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={formData.scheduledDate}
+                  onChange={(e) => setFormData({ ...formData, scheduledDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
-              <div className="p-6">
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-500">Total Sessions</span>
-                    <span className="text-lg font-semibold text-gray-900">0</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-500">This Month</span>
-                    <span className="text-lg font-semibold text-gray-900">0</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-500">Average Duration</span>
-                    <span className="text-lg font-semibold text-gray-900">0 min</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-500">Completed Rate</span>
-                    <span className="text-lg font-semibold text-gray-900">0%</span>
-                  </div>
-                </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                <input
+                  type="time"
+                  value={formData.startTime}
+                  onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {errors.startTime && <p className="text-sm text-red-600 mt-1">{errors.startTime}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Duration (minutes)</label>
+                <input
+                  type="number"
+                  min="15"
+                  max="180"
+                  value={formData.duration}
+                  onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 60 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
             </div>
-          </div>
 
-          {/* Session Types Preview */}
-          <div className="mt-8">
-            <div className="bg-white rounded-lg shadow-sm border">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Session Types</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <input
+                  type="text"
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  placeholder="e.g., Main Gym, Studio A"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
-              <div className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="p-4 border border-gray-200 rounded-lg text-center">
-                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                    </div>
-                    <h4 className="font-medium text-gray-900">Strength Training</h4>
-                    <p className="text-sm text-gray-500 mt-1">0 sessions</p>
-                  </div>
 
-                  <div className="p-4 border border-gray-200 rounded-lg text-center">
-                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                      </svg>
-                    </div>
-                    <h4 className="font-medium text-gray-900">Cardio</h4>
-                    <p className="text-sm text-gray-500 mt-1">0 sessions</p>
-                  </div>
-
-                  <div className="p-4 border border-gray-200 rounded-lg text-center">
-                    <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <svg className="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                    </div>
-                    <h4 className="font-medium text-gray-900">HIIT</h4>
-                    <p className="text-sm text-gray-500 mt-1">0 sessions</p>
-                  </div>
-
-                  <div className="p-4 border border-gray-200 rounded-lg text-center">
-                    <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <svg className="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.5a2.5 2.5 0 002.5-2.5V6a2.5 2.5 0 00-2.5-2.5H9V10z" />
-                      </svg>
-                    </div>
-                    <h4 className="font-medium text-gray-900">Flexibility</h4>
-                    <p className="text-sm text-gray-500 mt-1">0 sessions</p>
-                  </div>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Session Rate ($)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.sessionRate}
+                  onChange={(e) => setFormData({ ...formData, sessionRate: parseFloat(e.target.value) || 0 })}
+                  placeholder="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
             </div>
-          </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Trainer Notes</label>
+              <textarea
+                value={formData.trainerNotes}
+                onChange={(e) => setFormData({ ...formData, trainerNotes: e.target.value })}
+                rows={3}
+                placeholder="Pre-session notes, goals, or reminders..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {loading ? 'Creating...' : 'Create Session'}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
-    </TrainerLayout>
+    </div>
   );
 }

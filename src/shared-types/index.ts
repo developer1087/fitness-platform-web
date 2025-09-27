@@ -44,3 +44,12 @@ export * from './progress/types';
 
 // Social types
 export * from './social/types';
+
+// Trainer session types
+export * from './trainer-sessions';
+
+// Schedule and calendar types
+export * from './schedule';
+
+// Payment management types
+export * from './payments';
