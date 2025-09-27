@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import TrainerLayout from '../../components/TrainerLayout';
 import { updateProfile, updatePassword, sendEmailVerification, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
@@ -24,8 +24,8 @@ export default function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<ProfileFormData>({
-    firstName: user?.profile?.firstName || '',
-    lastName: user?.profile?.lastName || '',
+    firstName: '',
+    lastName: '',
     email: user?.email || '',
     phone: '',
     bio: '',
@@ -45,9 +45,28 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [emailVerificationSent, setEmailVerificationSent] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
-  const [showEmailVerification] = useState(!user?.emailVerified);
+  const [showEmailVerification, setShowEmailVerification] = useState(!user?.emailVerified);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState<string>('');
+
+  // Auto-fill form from Firebase auth data
+  useEffect(() => {
+    if (user) {
+      const displayName = user.displayName || '';
+      const [firstName, ...lastNameParts] = displayName.split(' ');
+      const lastName = lastNameParts.join(' ');
+
+      setFormData(prev => ({
+        ...prev,
+        firstName: user.profile?.firstName || firstName || '',
+        lastName: user.profile?.lastName || lastName || '',
+        email: user.email || ''
+      }));
+
+      setProfileImage(user.photoURL || null);
+      setShowEmailVerification(!user.emailVerified);
+    }
+  }, [user]);
 
   if (!user) {
     return <div>Loading...</div>;
@@ -89,14 +108,17 @@ export default function ProfilePage() {
     }
   };
 
-  const validateForm = () => {
+  const validateForm = (isProfilePictureOnly = false) => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.firstName.trim()) {
-      newErrors.firstName = 'First name is required';
-    }
-    if (!formData.lastName.trim()) {
-      newErrors.lastName = 'Last name is required';
+    // If only updating profile picture, skip name validation
+    if (!isProfilePictureOnly) {
+      if (!formData.firstName.trim()) {
+        newErrors.firstName = 'First name is required';
+      }
+      if (!formData.lastName.trim()) {
+        newErrors.lastName = 'Last name is required';
+      }
     }
     // Email validation disabled since email updates are disabled
     // if (!formData.email.trim()) {
@@ -134,8 +156,8 @@ export default function ProfilePage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSaveProfile = async () => {
-    if (!validateForm()) return;
+  const handleSaveProfile = async (isProfilePictureOnly = false) => {
+    if (!validateForm(isProfilePictureOnly)) return;
 
     setLoading(true);
     setSuccess('');
@@ -156,8 +178,14 @@ export default function ProfilePage() {
       }
 
       if (profileImage && profileImage !== user.photoURL) {
-        // Only update if it's a base64 image (new upload) or different URL
-        if (profileImage.startsWith('data:') || profileImage !== user.photoURL) {
+        // Handle base64 images by converting to a shorter format or upload to storage
+        if (profileImage.startsWith('data:')) {
+          // For now, we'll skip uploading base64 images to avoid Firebase URL length limits
+          // In production, upload to Firebase Storage and use the download URL
+          console.warn('Profile picture upload temporarily disabled due to Firebase URL length limits');
+          setErrors({ general: 'Profile picture upload temporarily disabled. Please use a smaller image or try again later.' });
+          return;
+        } else if (profileImage !== user.photoURL) {
           authUpdates.photoURL = profileImage;
         }
       }
@@ -238,12 +266,24 @@ export default function ProfilePage() {
   const handleSendEmailVerification = async () => {
     setLoading(true);
     try {
-      if (!auth) {
-        throw new Error('Firebase Auth not initialized');
+      if (!auth?.currentUser) {
+        throw new Error('No authenticated user found');
       }
-      await sendEmailVerification(auth.currentUser!);
+
+      await sendEmailVerification(auth.currentUser);
       setEmailVerificationSent(true);
-      setSuccess('Verification email sent! Please check your inbox.');
+      setSuccess('Verification email sent! Please check your inbox and refresh the page after verifying.');
+
+      // Optionally check verification status after a delay
+      setTimeout(async () => {
+        if (auth?.currentUser) {
+          await auth.currentUser.reload();
+          if (auth.currentUser.emailVerified) {
+            setShowEmailVerification(false);
+            setSuccess('Email verified successfully!');
+          }
+        }
+      }, 5000);
     } catch (error: any) {
       setErrors({ general: error.message || 'Failed to send verification email' });
     } finally {

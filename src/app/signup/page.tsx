@@ -4,7 +4,10 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { TraineeService } from '../../lib/traineeService';
+import { authService } from '../../lib/auth';
 import { TraineeInvitationRecord, SignupFormData, signupSchema } from '../../shared-types';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../../lib/firebase';
 
 function SignupContent() {
   const searchParams = useSearchParams();
@@ -66,6 +69,25 @@ function SignupContent() {
     }
   };
 
+  const redirectToAppStore = () => {
+    // Detect device type and redirect to appropriate app store
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isIOS = /iphone|ipad|ipod/.test(userAgent);
+    const isAndroid = /android/.test(userAgent);
+
+    if (isIOS) {
+      // Redirect to Apple App Store
+      window.location.href = 'https://apps.apple.com/app/fitness-platform'; // Replace with actual app store URL
+    } else if (isAndroid) {
+      // Redirect to Google Play Store
+      window.location.href = 'https://play.google.com/store/apps/details?id=com.fitnessplatform'; // Replace with actual app store URL
+    } else {
+      // Desktop or other - show instructions
+      alert('Please download the Fitness Platform app from your device\'s app store to continue as a trainee.');
+      router.push('/');
+    }
+  };
+
   const validateForm = (): boolean => {
     try {
       signupSchema.parse(formData);
@@ -93,25 +115,36 @@ function SignupContent() {
 
     setIsSubmitting(true);
     try {
-      // TODO: Implement actual user signup with Firebase Auth
-      console.log('Signup data:', formData);
-      console.log('Invitation:', invitation);
+      if (!auth) {
+        throw new Error('Firebase Auth not initialized');
+      }
 
-      // Simulate signup process
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Create user with Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password
+      );
+
+      const newUser = userCredential.user;
+      console.log('User created:', newUser.uid);
+
+      // Update the user's display name
+      await authService.updateUserProfile(newUser.uid, {
+        firstName: formData.firstName,
+        lastName: formData.lastName
+      });
 
       // If there's an invitation, accept it
       if (invitation) {
-        // TODO: Accept invitation after user is created
-        // await TraineeService.acceptInvitation(invitation.id, newUserId);
-        console.log('Invitation would be accepted for:', invitation.id);
-      }
+        await TraineeService.acceptInvitation(invitation.id, newUser.uid);
+        console.log('Invitation accepted for:', invitation.id);
 
-      // Redirect to appropriate page
-      if (invitation) {
-        router.push('/trainee/dashboard');
+        // For trainee signup, redirect to app store
+        redirectToAppStore();
       } else {
-        router.push('/trainer/dashboard');
+        // Regular trainer signup - redirect to trainer dashboard
+        router.push('/');
       }
     } catch (error) {
       console.error('Signup error:', error);
