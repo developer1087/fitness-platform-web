@@ -79,6 +79,45 @@ export default function ProfilePage() {
     }
   };
 
+  const compressBase64Image = (base64String: string, quality = 0.7): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+
+      img.onload = () => {
+        // Calculate new dimensions (max 300x300 while maintaining aspect ratio)
+        const maxSize = 300;
+        let { width, height } = img;
+
+        if (width > height && width > maxSize) {
+          height = (height * maxSize) / width;
+          width = maxSize;
+        } else if (height > maxSize) {
+          width = (width * maxSize) / height;
+          height = maxSize;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        // Draw and compress
+        ctx?.drawImage(img, 0, 0, width, height);
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+
+        // If still too large, try with lower quality
+        if (compressedDataUrl.length > 5000 && quality > 0.3) {
+          compressBase64Image(base64String, quality - 0.2).then(resolve).catch(reject);
+        } else {
+          resolve(compressedDataUrl);
+        }
+      };
+
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = base64String;
+    });
+  };
+
   const handlePasswordChange = (field: string, value: string) => {
     setPasswordData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
@@ -178,13 +217,20 @@ export default function ProfilePage() {
       }
 
       if (profileImage && profileImage !== user.photoURL) {
-        // Handle base64 images by converting to a shorter format or upload to storage
+        // Handle base64 images by compressing them to fit Firebase URL limits
         if (profileImage.startsWith('data:')) {
-          // For now, we'll skip uploading base64 images to avoid Firebase URL length limits
-          // In production, upload to Firebase Storage and use the download URL
-          console.warn('Profile picture upload temporarily disabled due to Firebase URL length limits');
-          setErrors({ general: 'Profile picture upload temporarily disabled. Please use a smaller image or try again later.' });
-          return;
+          try {
+            const compressedImage = await compressBase64Image(profileImage);
+            if (compressedImage.length > 4000) { // Firebase photoURL has practical limits
+              setErrors({ general: 'Image is too large even after compression. Please use a smaller image.' });
+              return;
+            }
+            authUpdates.photoURL = compressedImage;
+          } catch (error) {
+            console.error('Error compressing image:', error);
+            setErrors({ general: 'Failed to process image. Please try a different image.' });
+            return;
+          }
         } else if (profileImage !== user.photoURL) {
           authUpdates.photoURL = profileImage;
         }
