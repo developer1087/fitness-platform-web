@@ -86,8 +86,8 @@ export default function ProfilePage() {
       const img = new Image();
 
       img.onload = () => {
-        // Calculate new dimensions (max 300x300 while maintaining aspect ratio)
-        const maxSize = 300;
+        // Calculate new dimensions (max 200x200 while maintaining aspect ratio)
+        const maxSize = 200;
         let { width, height } = img;
 
         if (width > height && width > maxSize) {
@@ -106,8 +106,8 @@ export default function ProfilePage() {
         const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
 
         // If still too large, try with lower quality
-        if (compressedDataUrl.length > 5000 && quality > 0.3) {
-          compressBase64Image(base64String, quality - 0.2).then(resolve).catch(reject);
+        if (compressedDataUrl.length > 50000 && quality > 0.1) {
+          compressBase64Image(base64String, quality - 0.1).then(resolve).catch(reject);
         } else {
           resolve(compressedDataUrl);
         }
@@ -221,7 +221,8 @@ export default function ProfilePage() {
         if (profileImage.startsWith('data:')) {
           try {
             const compressedImage = await compressBase64Image(profileImage);
-            if (compressedImage.length > 4000) { // Firebase photoURL has practical limits
+            // Firebase photoURL can handle up to ~65KB base64 strings safely
+            if (compressedImage.length > 65000) {
               setErrors({ general: 'Image is too large even after compression. Please use a smaller image.' });
               return;
             }
