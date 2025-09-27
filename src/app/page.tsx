@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import TrainerLayout from '../components/TrainerLayout';
+import { TraineeService } from '../lib/traineeService';
 
 // Dashboard data interfaces
 interface DashboardStats {
@@ -23,6 +24,25 @@ interface RecentActivity {
   iconColor: string;
 }
 
+// Helper function to format time ago
+function getTimeAgo(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  if (diffDays > 0) {
+    return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  } else if (diffHours > 0) {
+    return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  } else if (diffMinutes > 0) {
+    return `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
+  } else {
+    return 'Just now';
+  }
+}
+
 export default function HomePage() {
   const { user, loading, signOut } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
@@ -36,52 +56,62 @@ export default function HomePage() {
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
 
   useEffect(() => {
-    // Simulate loading dashboard data
-    const loadDashboardData = () => {
-      // Mock data - in a real app this would come from APIs
-      setStats({
-        newTrainees: 12,
-        sessionsThisMonth: 84,
-        revenueThisMonth: 3240,
-        totalTrainees: 45,
-        pendingPayments: 3,
-        todaySessions: 5
-      });
+    const loadDashboardData = async () => {
+      if (!user?.uid) return;
 
-      setRecentActivity([
-        {
-          id: '1',
-          type: 'trainee_joined',
-          message: 'New trainee Sarah Johnson joined',
-          time: '2 hours ago',
-          icon: 'user',
-          iconColor: 'text-blue-600'
-        },
-        {
-          id: '2',
-          type: 'session_completed',
-          message: 'Session with Mike Chen completed',
-          time: '4 hours ago',
-          icon: 'check',
-          iconColor: 'text-green-600'
-        },
-        {
-          id: '3',
-          type: 'payment_received',
-          message: 'Payment received from Alex Rivera ($320)',
-          time: '1 day ago',
-          icon: 'dollar',
-          iconColor: 'text-yellow-600'
-        },
-        {
-          id: '4',
-          type: 'session_scheduled',
-          message: 'New session scheduled with Emma Wilson',
-          time: '2 days ago',
-          icon: 'calendar',
-          iconColor: 'text-purple-600'
-        }
-      ]);
+      try {
+        // Load trainees from Firestore
+        const trainees = await TraineeService.getTraineesByTrainer(user.uid);
+
+        // Calculate stats from real data
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        // Count new trainees this month
+        const newTraineesThisMonth = trainees.filter(trainee => {
+          const joinDate = new Date(trainee.joinDate);
+          return joinDate.getMonth() === currentMonth && joinDate.getFullYear() === currentYear;
+        }).length;
+
+        // Set stats based on real data
+        setStats({
+          newTrainees: newTraineesThisMonth,
+          sessionsThisMonth: 0, // TODO: Implement sessions collection
+          revenueThisMonth: 0, // TODO: Implement payments collection
+          totalTrainees: trainees.length,
+          pendingPayments: 0, // TODO: Implement payments collection
+          todaySessions: 0 // TODO: Implement sessions collection
+        });
+
+        // Create recent activity from trainees
+        const recentActivity: RecentActivity[] = trainees
+          .sort((a, b) => new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime())
+          .slice(0, 4)
+          .map((trainee, index) => ({
+            id: trainee.id,
+            type: 'trainee_joined' as const,
+            message: `${trainee.firstName} ${trainee.lastName} joined as trainee`,
+            time: getTimeAgo(new Date(trainee.joinDate)),
+            icon: 'user',
+            iconColor: 'text-blue-600'
+          }));
+
+        setRecentActivity(recentActivity);
+
+      } catch (error) {
+        console.error('Error loading dashboard data:', error);
+        // Fallback to empty/zero stats if there's an error
+        setStats({
+          newTrainees: 0,
+          sessionsThisMonth: 0,
+          revenueThisMonth: 0,
+          totalTrainees: 0,
+          pendingPayments: 0,
+          todaySessions: 0
+        });
+        setRecentActivity([]);
+      }
     };
 
     if (user) {
