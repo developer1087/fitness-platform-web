@@ -1,224 +1,22 @@
 'use client';
 
-import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import TrainerLayout from '../../components/TrainerLayout';
 
-interface CalendarEvent {
-  id: string;
-  title: string;
-  traineeId: string;
-  traineeName: string;
-  traineePhoto?: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  duration: number;
-  type: string;
-  location: string;
-  status: 'scheduled' | 'completed' | 'cancelled' | 'no-show';
-  notes?: string;
-  color: string;
-}
-
-interface TimeSlot {
-  time: string;
-  hour: number;
-  minute: number;
-}
-
-const mockEvents: CalendarEvent[] = [
-  {
-    id: '1',
-    title: 'Personal Training',
-    traineeId: '1',
-    traineeName: 'Sarah Johnson',
-    traineePhoto: 'https://images.unsplash.com/photo-1494790108755-2616b612b55c?w=150&h=150&fit=crop&crop=face',
-    date: '2024-09-21',
-    startTime: '09:00',
-    endTime: '10:00',
-    duration: 60,
-    type: 'Strength Training',
-    location: 'Main Gym',
-    status: 'scheduled',
-    color: 'bg-blue-500'
-  },
-  {
-    id: '2',
-    title: 'HIIT Session',
-    traineeId: '2',
-    traineeName: 'Mike Chen',
-    traineePhoto: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
-    date: '2024-09-21',
-    startTime: '14:00',
-    endTime: '15:00',
-    duration: 60,
-    type: 'HIIT',
-    location: 'Studio A',
-    status: 'scheduled',
-    color: 'bg-green-500'
-  },
-  {
-    id: '3',
-    title: 'Athletic Performance',
-    traineeId: '3',
-    traineeName: 'Alex Rivera',
-    traineePhoto: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
-    date: '2024-09-22',
-    startTime: '10:00',
-    endTime: '11:00',
-    duration: 60,
-    type: 'Athletic Performance',
-    location: 'Main Gym',
-    status: 'scheduled',
-    color: 'bg-purple-500'
-  },
-  {
-    id: '4',
-    title: 'Yoga & Flexibility',
-    traineeId: '4',
-    traineeName: 'Emma Wilson',
-    date: '2024-09-23',
-    startTime: '16:00',
-    endTime: '17:00',
-    duration: 60,
-    type: 'Yoga',
-    location: 'Studio B',
-    status: 'scheduled',
-    color: 'bg-orange-500'
-  },
-  {
-    id: '5',
-    title: 'Personal Training',
-    traineeId: '1',
-    traineeName: 'Sarah Johnson',
-    traineePhoto: 'https://images.unsplash.com/photo-1494790108755-2616b612b55c?w=150&h=150&fit=crop&crop=face',
-    date: '2024-09-24',
-    startTime: '09:00',
-    endTime: '10:00',
-    duration: 60,
-    type: 'Cardio',
-    location: 'Cardio Zone',
-    status: 'scheduled',
-    color: 'bg-blue-500'
-  },
-  {
-    id: '6',
-    title: 'Strength Training',
-    traineeId: '5',
-    traineeName: 'David Park',
-    date: '2024-09-25',
-    startTime: '11:00',
-    endTime: '12:00',
-    duration: 60,
-    type: 'Strength Training',
-    location: 'Main Gym',
-    status: 'scheduled',
-    color: 'bg-red-500'
-  }
-];
-
-const timeSlots: TimeSlot[] = Array.from({ length: 14 }, (_, i) => {
-  const hour = i + 6; // Start from 6 AM
-  return {
-    time: `${hour.toString().padStart(2, '0')}:00`,
-    hour,
-    minute: 0
-  };
-});
-
-const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
 export default function SchedulePage() {
   const { user } = useAuth();
-  const [events, setEvents] = useState<CalendarEvent[]>(mockEvents);
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'week' | 'day'>('week');
-  const [showAddEventModal, setShowAddEventModal] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [showEventDetails, setShowEventDetails] = useState(false);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ date: string; time: string } | null>(null);
 
   if (!user) {
-    return <div>Loading...</div>;
+    return <div className="flex items-center justify-center h-64">
+      <div className="text-center">
+        <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p className="mt-2 text-gray-600">Loading...</p>
+      </div>
+    </div>;
   }
-
-  // Get the start of the week (Monday)
-  const getWeekStart = (date: Date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    return new Date(d.setDate(diff));
-  };
-
-  const weekStart = getWeekStart(selectedDate);
-  const weekDates = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date(weekStart);
-    date.setDate(weekStart.getDate() + i);
-    return date;
-  });
-
-  const formatDate = (date: Date) => {
-    return date.toISOString().split('T')[0];
-  };
-
-  const getEventsForDate = (date: string) => {
-    return events.filter(event => event.date === date);
-  };
-
-  const getEventsForTimeSlot = (date: string, time: string) => {
-    return events.filter(event =>
-      event.date === date &&
-      event.startTime <= time &&
-      event.endTime > time
-    );
-  };
-
-  const navigateWeek = (direction: 'prev' | 'next') => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(selectedDate.getDate() + (direction === 'next' ? 7 : -7));
-    setSelectedDate(newDate);
-  };
-
-  const navigateDay = (direction: 'prev' | 'next') => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(selectedDate.getDate() + (direction === 'next' ? 1 : -1));
-    setSelectedDate(newDate);
-  };
-
-  const handleTimeSlotClick = (date: string, time: string) => {
-    setSelectedTimeSlot({ date, time });
-    setShowAddEventModal(true);
-  };
-
-  const handleEventClick = (event: CalendarEvent) => {
-    setSelectedEvent(event);
-    setShowEventDetails(true);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'border-l-green-500';
-      case 'cancelled':
-        return 'border-l-red-500';
-      case 'no-show':
-        return 'border-l-gray-500';
-      default:
-        return 'border-l-blue-500';
-    }
-  };
-
-  const isToday = (date: Date) => {
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
-  };
-
-  const isPast = (date: Date) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return date < today;
-  };
 
   return (
     <TrainerLayout currentPage="schedule">
@@ -226,373 +24,168 @@ export default function SchedulePage() {
       <div className="bg-white shadow-sm border-b">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h2 className="text-2xl font-bold text-gray-900">Schedule</h2>
-
-              {/* View Mode Toggle */}
-              <div className="flex rounded-md shadow-sm">
-                <button
-                  onClick={() => setViewMode('week')}
-                  className={`px-4 py-2 text-sm font-medium rounded-l-md border ${
-                    viewMode === 'week'
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  Week
-                </button>
-                <button
-                  onClick={() => setViewMode('day')}
-                  className={`px-4 py-2 text-sm font-medium rounded-r-md border-t border-r border-b ${
-                    viewMode === 'day'
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  Day
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              {/* Navigation */}
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => viewMode === 'week' ? navigateWeek('prev') : navigateDay('prev')}
-                  className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-
-                <div className="text-lg font-semibold text-gray-900 min-w-[200px] text-center">
-                  {viewMode === 'week' ? (
-                    `${weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekDates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-                  ) : (
-                    selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-                  )}
-                </div>
-
-                <button
-                  onClick={() => viewMode === 'week' ? navigateWeek('next') : navigateDay('next')}
-                  className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-
-              <button
-                onClick={() => setSelectedDate(new Date())}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-              >
-                Today
-              </button>
-
-              <button
-                onClick={() => setShowAddEventModal(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center"
-              >
-                <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                Add Session
-              </button>
-            </div>
+            <h2 className="text-2xl font-bold text-gray-900">Schedule & Calendar</h2>
+            <button
+              disabled
+              className="bg-gray-300 text-gray-500 px-4 py-2 rounded-md cursor-not-allowed"
+            >
+              Schedule Session (Coming Soon)
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Calendar Content */}
+      {/* Content */}
       <div className="p-6">
-        {viewMode === 'week' ? (
-          /* Week View */
-          <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-            {/* Header with days */}
-            <div className="grid grid-cols-8 border-b">
-              <div className="p-4 bg-gray-50 border-r"></div>
-              {weekDates.map((date, index) => (
-                <div key={index} className={`p-4 bg-gray-50 border-r last:border-r-0 text-center ${isToday(date) ? 'bg-blue-50' : ''}`}>
-                  <div className="font-medium text-gray-900">{weekDays[index]}</div>
-                  <div className={`text-2xl font-bold ${isToday(date) ? 'text-blue-600' : isPast(date) ? 'text-gray-400' : 'text-gray-900'}`}>
-                    {date.getDate()}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    {date.toLocaleDateString('en-US', { month: 'short' })}
+        <div className="max-w-6xl mx-auto">
+          {/* Coming Soon Banner */}
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-8 text-center">
+            <div className="flex justify-center mb-4">
+              <svg className="w-16 h-16 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">Schedule Management Coming Soon! 📅</h3>
+            <p className="text-gray-700 mb-4 max-w-2xl mx-auto">
+              We're building a comprehensive scheduling system to help you manage appointments,
+              track availability, and streamline your training sessions.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+              <div className="bg-white p-4 rounded-lg shadow-sm border">
+                <h4 className="font-semibold text-gray-900 mb-2">📅 Calendar View</h4>
+                <p className="text-sm text-gray-600">Visual calendar with drag-and-drop scheduling</p>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow-sm border">
+                <h4 className="font-semibold text-gray-900 mb-2">⏰ Time Management</h4>
+                <p className="text-sm text-gray-600">Set availability, block time, and manage conflicts</p>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow-sm border">
+                <h4 className="font-semibold text-gray-900 mb-2">🔔 Notifications</h4>
+                <p className="text-sm text-gray-600">Automatic reminders for you and your trainees</p>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow-sm border">
+                <h4 className="font-semibold text-gray-900 mb-2">📱 Mobile Sync</h4>
+                <p className="text-sm text-gray-600">Sync with Google Calendar and other platforms</p>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow-sm border">
+                <h4 className="font-semibold text-gray-900 mb-2">🎯 Session Types</h4>
+                <p className="text-sm text-gray-600">Customize session types, durations, and locations</p>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow-sm border">
+                <h4 className="font-semibold text-gray-900 mb-2">📊 Analytics</h4>
+                <p className="text-sm text-gray-600">Track scheduling patterns and utilization</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Calendar Preview */}
+          <div className="mt-8">
+            <div className="bg-white rounded-lg shadow-sm border">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-medium text-gray-900">Calendar Preview</h3>
+                  <div className="flex items-center space-x-2">
+                    <button disabled className="px-3 py-1 text-sm bg-gray-100 text-gray-500 rounded cursor-not-allowed">← Prev</button>
+                    <span className="text-sm font-medium text-gray-900">{new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
+                    <button disabled className="px-3 py-1 text-sm bg-gray-100 text-gray-500 rounded cursor-not-allowed">Next →</button>
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
 
-            {/* Time slots */}
-            <div className="max-h-[600px] overflow-y-auto">
-              {timeSlots.map((slot) => (
-                <div key={slot.time} className="grid grid-cols-8 border-b hover:bg-gray-50">
-                  <div className="p-4 border-r bg-gray-50 text-sm font-medium text-gray-500 text-right">
-                    {slot.time}
-                  </div>
-                  {weekDates.map((date, dateIndex) => {
-                    const dateStr = formatDate(date);
-                    const eventsInSlot = getEventsForTimeSlot(dateStr, slot.time);
+              <div className="p-6">
+                {/* Calendar Grid */}
+                <div className="grid grid-cols-7 gap-1 mb-4">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                    <div key={day} className="p-3 text-center text-sm font-medium text-gray-500 bg-gray-50 rounded">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({ length: 35 }, (_, i) => {
+                    const date = new Date();
+                    date.setDate(date.getDate() - date.getDay() + i);
+                    const isToday = date.toDateString() === new Date().toDateString();
+                    const isCurrentMonth = date.getMonth() === new Date().getMonth();
 
                     return (
                       <div
-                        key={dateIndex}
-                        className="p-2 border-r last:border-r-0 min-h-[60px] cursor-pointer hover:bg-gray-100 relative"
-                        onClick={() => handleTimeSlotClick(dateStr, slot.time)}
+                        key={i}
+                        className={`p-3 h-20 border border-gray-100 rounded ${
+                          isCurrentMonth ? 'bg-white' : 'bg-gray-50'
+                        } ${isToday ? 'bg-blue-50 border-blue-200' : ''}`}
                       >
-                        {eventsInSlot.map((event) => (
-                          <div
-                            key={event.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEventClick(event);
-                            }}
-                            className={`${event.color} text-white p-2 rounded-md text-xs font-medium cursor-pointer hover:opacity-90 mb-1 border-l-4 ${getStatusColor(event.status)}`}
-                          >
-                            <div className="font-semibold truncate">{event.traineeName}</div>
-                            <div className="truncate">{event.type}</div>
-                            <div className="text-xs opacity-90">{event.startTime}-{event.endTime}</div>
+                        <div className={`text-sm ${isCurrentMonth ? 'text-gray-900' : 'text-gray-400'} ${isToday ? 'font-bold text-blue-600' : ''}`}>
+                          {date.getDate()}
+                        </div>
+                        {isCurrentMonth && Math.random() > 0.7 && (
+                          <div className="mt-1">
+                            <div className="h-1 bg-blue-200 rounded mb-1"></div>
+                            <div className="text-xs text-gray-600 truncate">Preview Session</div>
                           </div>
-                        ))}
+                        )}
                       </div>
                     );
                   })}
                 </div>
-              ))}
+              </div>
             </div>
           </div>
-        ) : (
-          /* Day View */
-          <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-            <div className="p-4 bg-gray-50 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </h3>
-            </div>
 
-            <div className="max-h-[600px] overflow-y-auto">
-              {timeSlots.map((slot) => {
-                const dateStr = formatDate(selectedDate);
-                const eventsInSlot = getEventsForTimeSlot(dateStr, slot.time);
-
-                return (
-                  <div key={slot.time} className="flex border-b hover:bg-gray-50">
-                    <div className="w-24 p-4 border-r bg-gray-50 text-sm font-medium text-gray-500 text-right">
-                      {slot.time}
-                    </div>
-                    <div
-                      className="flex-1 p-4 min-h-[80px] cursor-pointer hover:bg-gray-100 relative"
-                      onClick={() => handleTimeSlotClick(dateStr, slot.time)}
-                    >
-                      {eventsInSlot.map((event) => (
-                        <div
-                          key={event.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEventClick(event);
-                          }}
-                          className={`${event.color} text-white p-3 rounded-md cursor-pointer hover:opacity-90 mb-2 border-l-4 ${getStatusColor(event.status)}`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="font-semibold">{event.traineeName}</div>
-                              <div className="text-sm">{event.type} • {event.location}</div>
-                              <div className="text-xs opacity-90">{event.startTime} - {event.endTime}</div>
-                            </div>
-                            {event.traineePhoto && (
-                              <img
-                                src={event.traineePhoto}
-                                alt={event.traineeName}
-                                className="w-10 h-10 rounded-full border-2 border-white"
-                              />
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Today's Sessions Summary */}
-        <div className="mt-6 bg-white rounded-lg shadow-sm border p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Today's Sessions</h3>
-          <div className="space-y-3">
-            {getEventsForDate(formatDate(new Date())).length === 0 ? (
-              <p className="text-gray-500">No sessions scheduled for today.</p>
-            ) : (
-              getEventsForDate(formatDate(new Date())).map((event) => (
-                <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center space-x-3">
-                    {event.traineePhoto && (
-                      <img
-                        src={event.traineePhoto}
-                        alt={event.traineeName}
-                        className="w-10 h-10 rounded-full"
-                      />
-                    )}
-                    <div>
-                      <div className="font-medium text-gray-900">{event.traineeName}</div>
-                      <div className="text-sm text-gray-600">{event.type} • {event.startTime} - {event.endTime}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      event.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
-                      event.status === 'completed' ? 'bg-green-100 text-green-800' :
-                      event.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-                    </span>
-                    <button
-                      onClick={() => handleEventClick(event)}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    </button>
+          {/* Quick Stats */}
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+                    </svg>
                   </div>
                 </div>
-              ))
-            )}
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Today's Sessions</p>
+                  <p className="text-2xl font-semibold text-gray-900">0</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                    <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">This Week</p>
+                  <p className="text-2xl font-semibold text-gray-900">0</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-sm border">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                    <svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Available Hours</p>
+                  <p className="text-2xl font-semibold text-gray-900">40</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-
-      {/* Add Event Modal */}
-      {showAddEventModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Add New Session</h3>
-              {selectedTimeSlot && (
-                <p className="text-sm text-gray-600 mb-4">
-                  Selected: {new Date(selectedTimeSlot.date).toLocaleDateString()} at {selectedTimeSlot.time}
-                </p>
-              )}
-              <p className="text-sm text-gray-600 mb-4">
-                Session scheduling functionality will be implemented next.
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowAddEventModal(false);
-                    setSelectedTimeSlot(null);
-                  }}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    setShowAddEventModal(false);
-                    setSelectedTimeSlot(null);
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                >
-                  Coming Soon
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Event Details Modal */}
-      {showEventDetails && selectedEvent && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Session Details</h3>
-                <button
-                  onClick={() => setShowEventDetails(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center space-x-3">
-                  {selectedEvent.traineePhoto && (
-                    <img
-                      src={selectedEvent.traineePhoto}
-                      alt={selectedEvent.traineeName}
-                      className="w-12 h-12 rounded-full"
-                    />
-                  )}
-                  <div>
-                    <div className="font-semibold text-gray-900">{selectedEvent.traineeName}</div>
-                    <div className="text-sm text-gray-600">{selectedEvent.type}</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <label className="block font-medium text-gray-700">Date</label>
-                    <p className="text-gray-900">{new Date(selectedEvent.date).toLocaleDateString()}</p>
-                  </div>
-                  <div>
-                    <label className="block font-medium text-gray-700">Time</label>
-                    <p className="text-gray-900">{selectedEvent.startTime} - {selectedEvent.endTime}</p>
-                  </div>
-                  <div>
-                    <label className="block font-medium text-gray-700">Duration</label>
-                    <p className="text-gray-900">{selectedEvent.duration} minutes</p>
-                  </div>
-                  <div>
-                    <label className="block font-medium text-gray-700">Location</label>
-                    <p className="text-gray-900">{selectedEvent.location}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-medium text-gray-700 mb-1">Status</label>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    selectedEvent.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
-                    selectedEvent.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    selectedEvent.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {selectedEvent.status.charAt(0).toUpperCase() + selectedEvent.status.slice(1)}
-                  </span>
-                </div>
-
-                {selectedEvent.notes && (
-                  <div>
-                    <label className="block font-medium text-gray-700 mb-1">Notes</label>
-                    <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded-md">{selectedEvent.notes}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-                <button
-                  onClick={() => setShowEventDetails(false)}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-                >
-                  Close
-                </button>
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-                  Edit Session
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </TrainerLayout>
   );
 }

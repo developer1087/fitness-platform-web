@@ -4,156 +4,92 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import TrainerLayout from '../../../components/TrainerLayout';
 import { useParams } from 'next/navigation';
+import { TraineeService } from '../../../lib/traineeService';
+import { Trainee } from '../../../shared-types';
 
-interface TraineeDetails {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone?: string;
-  joinDate: string;
-  status: 'active' | 'inactive' | 'trial';
-  fitnessLevel: 'beginner' | 'intermediate' | 'advanced';
-  goals: string[];
-  lastSession?: string;
-  totalSessions: number;
-  profilePicture?: string;
-  age?: number;
-  height?: string;
-  weight?: string;
-  emergencyContact?: {
-    name: string;
-    phone: string;
-    relationship: string;
-  };
-  medicalNotes?: string;
-  sessionHistory: SessionHistory[];
-  payments: PaymentHistory[];
-  notes: TrainerNote[];
-}
-
-interface SessionHistory {
-  id: string;
-  date: string;
-  duration: number;
-  type: string;
-  notes?: string;
-  completed: boolean;
-}
-
-interface PaymentHistory {
-  id: string;
-  date: string;
-  amount: number;
-  method: string;
-  status: 'paid' | 'pending' | 'overdue';
-}
-
-interface TrainerNote {
-  id: string;
-  date: string;
-  note: string;
-  category: 'progress' | 'behavior' | 'medical' | 'goal' | 'general';
-}
-
-// Mock data - in a real app this would come from an API
-const mockTraineeDetails: TraineeDetails = {
-  id: '1',
-  firstName: 'Sarah',
-  lastName: 'Johnson',
-  email: 'sarah.johnson@email.com',
-  phone: '+1 (555) 123-4567',
-  joinDate: '2024-08-15',
-  status: 'active',
-  fitnessLevel: 'beginner',
-  goals: ['Weight Loss', 'General Fitness', 'Improved Endurance'],
-  lastSession: '2024-09-20',
-  totalSessions: 12,
-  profilePicture: 'https://images.unsplash.com/photo-1494790108755-2616b612b55c?w=300&h=300&fit=crop&crop=face',
-  age: 28,
-  height: '5\'6"',
-  weight: '140 lbs',
-  emergencyContact: {
-    name: 'Mike Johnson',
-    phone: '+1 (555) 987-6543',
-    relationship: 'Spouse'
-  },
-  medicalNotes: 'No known medical conditions. Cleared for all activities.',
-  sessionHistory: [
-    {
-      id: '1',
-      date: '2024-09-20',
-      duration: 60,
-      type: 'Strength Training',
-      notes: 'Great progress on squats and deadlifts. Increased weight by 10lbs.',
-      completed: true
-    },
-    {
-      id: '2',
-      date: '2024-09-18',
-      duration: 45,
-      type: 'Cardio',
-      notes: 'Completed 30 minutes on treadmill, good form throughout.',
-      completed: true
-    },
-    {
-      id: '3',
-      date: '2024-09-16',
-      duration: 60,
-      type: 'Full Body',
-      notes: 'Focused on form and technique. Client showing improved confidence.',
-      completed: true
-    }
-  ],
-  payments: [
-    {
-      id: '1',
-      date: '2024-09-01',
-      amount: 320,
-      method: 'Credit Card',
-      status: 'paid'
-    },
-    {
-      id: '2',
-      date: '2024-08-01',
-      amount: 320,
-      method: 'Credit Card',
-      status: 'paid'
-    }
-  ],
-  notes: [
-    {
-      id: '1',
-      date: '2024-09-20',
-      note: 'Sarah is making excellent progress. She\'s become much more confident with weights.',
-      category: 'progress'
-    },
-    {
-      id: '2',
-      date: '2024-09-15',
-      note: 'Updated goals to include improved endurance after discussion with client.',
-      category: 'goal'
-    },
-    {
-      id: '3',
-      date: '2024-09-10',
-      note: 'Client mentioned some soreness after last session. Adjusted intensity.',
-      category: 'general'
-    }
-  ]
-};
 
 export default function TraineeDetailPage() {
   const params = useParams();
   const { user } = useAuth();
   const id = params?.id as string;
   const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'payments' | 'notes'>('overview');
-  const [trainee] = useState<TraineeDetails>(mockTraineeDetails);
+  const [trainee, setTrainee] = useState<Trainee | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
 
+  // Load trainee data
+  useEffect(() => {
+    if (id && user?.uid) {
+      loadTrainee();
+    }
+  }, [id, user]);
+
+  const loadTrainee = async () => {
+    if (!id) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      const traineeData = await TraineeService.getTraineeById(id);
+      if (traineeData) {
+        setTrainee(traineeData);
+      } else {
+        setError('Trainee not found');
+      }
+    } catch (err) {
+      console.error('Error loading trainee:', err);
+      setError('Failed to load trainee details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!user) {
-    return <div>Loading...</div>;
+    return <div className="flex items-center justify-center h-64">
+      <div className="text-center">
+        <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p className="mt-2 text-gray-600">Loading...</p>
+      </div>
+    </div>;
+  }
+
+  if (loading) {
+    return (
+      <TrainerLayout currentPage="trainees">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p className="mt-2 text-gray-600">Loading trainee details...</p>
+          </div>
+        </div>
+      </TrainerLayout>
+    );
+  }
+
+  if (error || !trainee) {
+    return (
+      <TrainerLayout currentPage="trainees">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <svg className="w-12 h-12 text-red-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <p className="mt-2 text-red-600 font-medium">{error || 'Trainee not found'}</p>
+            <a href="/trainees" className="mt-4 inline-block text-blue-600 hover:text-blue-800">
+              ← Back to Trainees
+            </a>
+          </div>
+        </div>
+      </TrainerLayout>
+    );
   }
 
   const getStatusBadge = (status: string) => {
@@ -165,16 +101,6 @@ export default function TraineeDetailPage() {
     return styles[status as keyof typeof styles] || styles.inactive;
   };
 
-  const getCategoryBadge = (category: string) => {
-    const styles = {
-      progress: 'bg-green-100 text-green-800',
-      behavior: 'bg-blue-100 text-blue-800',
-      medical: 'bg-red-100 text-red-800',
-      goal: 'bg-purple-100 text-purple-800',
-      general: 'bg-gray-100 text-gray-800'
-    };
-    return styles[category as keyof typeof styles] || styles.general;
-  };
 
   return (
     <TrainerLayout currentPage="trainees">
@@ -239,16 +165,16 @@ export default function TraineeDetailPage() {
                 <h3 className="text-sm font-medium text-gray-500 mb-2">Contact Information</h3>
                 <div className="space-y-1">
                   <p className="text-sm text-gray-900">{trainee.email}</p>
-                  <p className="text-sm text-gray-900">{trainee.phone}</p>
+                  <p className="text-sm text-gray-500">Phone: Not set</p>
                 </div>
               </div>
 
               <div>
                 <h3 className="text-sm font-medium text-gray-500 mb-2">Physical Stats</h3>
                 <div className="space-y-1">
-                  <p className="text-sm text-gray-900">Age: {trainee.age}</p>
-                  <p className="text-sm text-gray-900">Height: {trainee.height}</p>
-                  <p className="text-sm text-gray-900">Weight: {trainee.weight}</p>
+                  <p className="text-sm text-gray-500">Age: Not set</p>
+                  <p className="text-sm text-gray-500">Height: Not set</p>
+                  <p className="text-sm text-gray-500">Weight: Not set</p>
                 </div>
               </div>
 
@@ -306,18 +232,18 @@ export default function TraineeDetailPage() {
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-3">Emergency Contact</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-3">Notes</h3>
                   <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="font-medium text-gray-900">{trainee.emergencyContact?.name}</p>
-                    <p className="text-sm text-gray-600">{trainee.emergencyContact?.phone}</p>
-                    <p className="text-sm text-gray-600">{trainee.emergencyContact?.relationship}</p>
+                    <p className="text-gray-900">{trainee.notes || 'No notes available'}</p>
                   </div>
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-3">Medical Notes</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-gray-900">{trainee.medicalNotes}</p>
+                  <h3 className="text-lg font-medium text-gray-900 mb-3">Emergency Contact & Medical Info</h3>
+                  <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                    <p className="text-yellow-700 text-sm">
+                      📝 Emergency contact and medical information features will be implemented in the next update.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -332,27 +258,10 @@ export default function TraineeDetailPage() {
                   </button>
                 </div>
 
-                <div className="space-y-3">
-                  {trainee.sessionHistory.map((session) => (
-                    <div key={session.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h4 className="font-medium text-gray-900">{session.type}</h4>
-                          <p className="text-sm text-gray-600">
-                            {new Date(session.date).toLocaleDateString()} • {session.duration} minutes
-                          </p>
-                          {session.notes && (
-                            <p className="mt-2 text-sm text-gray-700">{session.notes}</p>
-                          )}
-                        </div>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          session.completed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {session.completed ? 'Completed' : 'Scheduled'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                  <p className="text-blue-700 text-sm">
+                    📅 Session management features will be implemented in the next update. You can currently track total sessions: <strong>{trainee.totalSessions}</strong>
+                  </p>
                 </div>
               </div>
             )}
@@ -361,49 +270,10 @@ export default function TraineeDetailPage() {
               <div className="space-y-4">
                 <h3 className="text-lg font-medium text-gray-900">Payment History</h3>
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Date
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Amount
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Method
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {trainee.payments.map((payment) => (
-                        <tr key={payment.id}>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {new Date(payment.date).toLocaleDateString()}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            ${payment.amount}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {payment.method}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              payment.status === 'paid' ? 'bg-green-100 text-green-800' :
-                              payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-red-100 text-red-800'
-                            }`}>
-                              {payment.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
+                  <p className="text-green-700 text-sm">
+                    💳 Payment management features will be implemented in the next update. This will include payment tracking, invoicing, and revenue analytics.
+                  </p>
                 </div>
               </div>
             )}
@@ -420,20 +290,11 @@ export default function TraineeDetailPage() {
                   </button>
                 </div>
 
-                <div className="space-y-3">
-                  {trainee.notes.map((note) => (
-                    <div key={note.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryBadge(note.category)}`}>
-                          {note.category}
-                        </span>
-                        <span className="text-sm text-gray-500">
-                          {new Date(note.date).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <p className="text-gray-900">{note.note}</p>
-                    </div>
-                  ))}
+                <div className="bg-purple-50 border border-purple-200 p-4 rounded-lg">
+                  <p className="text-purple-700 text-sm">
+                    📝 Advanced note management will be implemented in the next update. Currently showing basic notes from trainee profile: <br/>
+                    <strong>{trainee.notes || 'No notes available'}</strong>
+                  </p>
                 </div>
               </div>
             )}
