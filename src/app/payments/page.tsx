@@ -192,7 +192,7 @@ export default function PaymentsPage() {
               <InvoicesTab
                 invoices={invoices}
                 onSendInvoice={handleSendInvoice}
-                onViewInvoice={(invoice) => setSelectedInvoice(invoice)}
+                onViewInvoice={(invoice: Invoice) => setSelectedInvoice(invoice)}
               />
             )}
 
@@ -692,7 +692,7 @@ function CreateInvoiceModal({ isOpen, onClose, onSubmit, trainees }: any) {
                 <option value="">Select a client</option>
                 {trainees.map((trainee: Trainee) => (
                   <option key={trainee.id} value={trainee.id}>
-                    {trainee.personalInfo.firstName} {trainee.personalInfo.lastName}
+                    {trainee.firstName} {trainee.lastName}
                   </option>
                 ))}
               </select>

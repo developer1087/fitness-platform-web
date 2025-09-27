@@ -9,9 +9,9 @@ import type {
   BookingSlot,
   TrainerAvailabilitySlot,
   CreateAvailabilityFormData,
-  BookSlotFormData,
-  Trainee
-} from '../../shared-types';
+  BookSlotFormData
+} from '../../shared-types/schedule';
+import type { Trainee } from '../../shared-types';
 
 export default function SchedulePage() {
   const { user } = useAuth();
@@ -33,7 +33,7 @@ export default function SchedulePage() {
     if (user) {
       loadData();
     }
-  }, [user, currentDate, loadData]);
+  }, [user, currentDate]);
 
   const loadData = async () => {
     try {
@@ -61,7 +61,7 @@ export default function SchedulePage() {
           endDate.toISOString().split('T')[0]
         ),
         ScheduleService.getTrainerAvailability(user!.uid),
-        TraineeService.getTrainerTrainees(user!.uid)
+        TraineeService.getTraineesByTrainer(user!.uid)
       ]);
 
       setBookings(bookingsData);
