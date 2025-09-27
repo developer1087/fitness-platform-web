@@ -24,7 +24,7 @@ export default function TraineeDetailPage() {
     if (id && user?.uid) {
       loadTrainee();
     }
-  }, [id, user, loadTrainee]);
+  }, [id, user]);
 
   const loadTrainee = async () => {
     if (!id) return;

@@ -444,7 +444,7 @@ function CreateBookingModal({ isOpen, onClose, onSubmit, trainees, selectedTimeS
               <option value="">Select a trainee</option>
               {trainees.map((trainee: Trainee) => (
                 <option key={trainee.id} value={trainee.id}>
-                  {trainee.personalInfo.firstName} {trainee.personalInfo.lastName}
+                  {trainee.firstName} {trainee.lastName}
                 </option>
               ))}
             </select>
