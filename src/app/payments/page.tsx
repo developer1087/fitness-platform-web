@@ -27,7 +27,7 @@ export default function PaymentsPage() {
   // Modal states
   const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
   // const [showPaymentModal, setShowPaymentModal] = useState(false);
-  // const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -44,7 +44,7 @@ export default function PaymentsPage() {
         PaymentService.getPaymentAccount(user!.uid),
         PaymentService.getTrainerInvoices(user!.uid, { limit: 50 }),
         PaymentService.getTrainerPayments(user!.uid),
-        TraineeService.getTrainerTrainees(user!.uid)
+        TraineeService.getTraineesByTrainer(user!.uid)
       ]);
 
       setAccount(accountData);
