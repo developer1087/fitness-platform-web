@@ -9,22 +9,22 @@ import {
   query,
   where,
   orderBy,
-  serverTimestamp,
-  Timestamp
+  // serverTimestamp,
+  // Timestamp
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import {
   TraineeInvitationFormData,
   TraineeInvitationRecord,
   Trainee,
-  UserProfile
+  // UserProfile
 } from '../shared-types';
 // Email sending is handled server-side via API route to avoid bundling Node-only modules in the client
 
 // Collections
 const TRAINEE_INVITATIONS_COLLECTION = 'trainee_invitations';
 const TRAINEES_COLLECTION = 'trainees';
-const USERS_COLLECTION = 'users';
+// const USERS_COLLECTION = 'users';
 
 // Generate a secure random token for invitations
 function generateInviteToken(): string {

@@ -26,14 +26,14 @@ export default function PaymentsPage() {
 
   // Modal states
   const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  // const [showPaymentModal, setShowPaymentModal] = useState(false);
+  // const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
     if (user) {
       loadData();
     }
-  }, [user]);
+  }, [user, loadData]);
 
   const loadData = async () => {
     try {

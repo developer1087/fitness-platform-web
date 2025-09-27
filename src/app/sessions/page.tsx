@@ -23,7 +23,7 @@ export default function SessionsPage() {
       loadSessions();
       loadTrainees();
     }
-  }, [user, activeTab]);
+  }, [user, activeTab, loadSessions, loadTrainees]);
 
   const loadSessions = async () => {
     if (!user?.uid) return;

@@ -6,8 +6,6 @@ import TrainerLayout from '../../components/TrainerLayout';
 import { ScheduleService } from '../../lib/scheduleService';
 import { TraineeService } from '../../lib/traineeService';
 import type {
-  DaySchedule,
-  TimeSlot,
   BookingSlot,
   TrainerAvailabilitySlot,
   CreateAvailabilityFormData,
@@ -35,7 +33,7 @@ export default function SchedulePage() {
     if (user) {
       loadData();
     }
-  }, [user, currentDate]);
+  }, [user, currentDate, loadData]);
 
   const loadData = async () => {
     try {
@@ -292,8 +290,6 @@ export default function SchedulePage() {
           <WeekView
             weekDays={getWeekDays()}
             timeSlots={getTimeSlots()}
-            bookings={bookings}
-            availability={availability}
             onTimeSlotClick={handleTimeSlotClick}
             isSlotBooked={isSlotBooked}
             isSlotAvailable={isSlotAvailable}
@@ -337,8 +333,6 @@ export default function SchedulePage() {
 function WeekView({
   weekDays,
   timeSlots,
-  bookings,
-  availability,
   onTimeSlotClick,
   isSlotBooked,
   isSlotAvailable,

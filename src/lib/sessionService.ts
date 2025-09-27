@@ -10,9 +10,9 @@ import {
   where,
   orderBy,
   limit,
-  startAfter,
-  Timestamp,
-  serverTimestamp,
+  // startAfter,
+  // Timestamp,
+  // serverTimestamp,
   writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -23,14 +23,14 @@ import type {
   SessionTemplate,
   SessionStats,
   PersonalRecord,
-  TraineePerformance
+  // TraineePerformance
 } from '../shared-types/trainer-sessions';
 
 // Collections
 const SESSIONS_COLLECTION = 'training_sessions';
 const SESSION_TEMPLATES_COLLECTION = 'session_templates';
 const PERSONAL_RECORDS_COLLECTION = 'personal_records';
-const SESSION_STATS_COLLECTION = 'session_stats';
+// const SESSION_STATS_COLLECTION = 'session_stats';
 
 export class SessionService {
 

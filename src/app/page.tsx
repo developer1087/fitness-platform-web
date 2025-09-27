@@ -44,7 +44,7 @@ function getTimeAgo(date: Date): string {
 }
 
 export default function HomePage() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     newTrainees: 0,
     sessionsThisMonth: 0,
@@ -88,7 +88,7 @@ export default function HomePage() {
         const recentActivity: RecentActivity[] = trainees
           .sort((a, b) => new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime())
           .slice(0, 4)
-          .map((trainee, index) => ({
+          .map((trainee) => ({
             id: trainee.id,
             type: 'trainee_joined' as const,
             message: `${trainee.firstName} ${trainee.lastName} joined as trainee`,

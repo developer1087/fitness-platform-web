@@ -5,25 +5,19 @@ import {
   getDoc,
   getDocs,
   updateDoc,
-  deleteDoc,
   query,
   where,
   orderBy,
-  limit,
-  writeBatch,
-  Timestamp
+  writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type {
   TrainerAvailabilitySlot,
   BookingSlot,
   RecurringBooking,
-  CalendarEvent,
-  ScheduleTemplate,
   CreateAvailabilityFormData,
   BookSlotFormData,
   ScheduleStatsData,
-  ScheduleConflict,
   DaySchedule,
   TimeSlot,
   CalendarViewSettings
@@ -33,9 +27,9 @@ import type {
 const AVAILABILITY_SLOTS_COLLECTION = 'availability_slots';
 const BOOKING_SLOTS_COLLECTION = 'booking_slots';
 const RECURRING_BOOKINGS_COLLECTION = 'recurring_bookings';
-const CALENDAR_EVENTS_COLLECTION = 'calendar_events';
-const SCHEDULE_TEMPLATES_COLLECTION = 'schedule_templates';
-const SCHEDULE_CONFLICTS_COLLECTION = 'schedule_conflicts';
+// const CALENDAR_EVENTS_COLLECTION = 'calendar_events';
+// const SCHEDULE_TEMPLATES_COLLECTION = 'schedule_templates';
+// const SCHEDULE_CONFLICTS_COLLECTION = 'schedule_conflicts';
 const CALENDAR_SETTINGS_COLLECTION = 'calendar_settings';
 
 export class ScheduleService {
@@ -131,7 +125,7 @@ export class ScheduleService {
       endDate.setDate(now.getDate() + (weeksAhead * 7));
 
       // Find next occurrence of the availability day
-      let currentDate = new Date(now);
+      const currentDate = new Date(now);
       while (currentDate.getDay() !== availability.dayOfWeek) {
         currentDate.setDate(currentDate.getDate() + 1);
       }

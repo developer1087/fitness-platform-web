@@ -5,13 +5,10 @@ import {
   getDoc,
   getDocs,
   updateDoc,
-  deleteDoc,
   query,
   where,
   orderBy,
-  limit,
-  writeBatch,
-  Timestamp
+  limit
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type {
@@ -19,16 +16,11 @@ import type {
   PaymentMethod,
   Invoice,
   Payment,
-  Payout,
-  PaymentPackage,
   FinancialReport,
   PaymentSettings,
   CreateInvoiceFormData,
   ProcessPaymentFormData,
-  PayoutRequestFormData,
-  PaymentMethodFormData,
-  PaymentAnalytics,
-  InvoiceLineItem
+  PaymentMethodFormData
 } from '../shared-types/payments';
 
 // Collections
@@ -36,8 +28,6 @@ const PAYMENT_ACCOUNTS_COLLECTION = 'payment_accounts';
 const PAYMENT_METHODS_COLLECTION = 'payment_methods';
 const INVOICES_COLLECTION = 'invoices';
 const PAYMENTS_COLLECTION = 'payments';
-const PAYOUTS_COLLECTION = 'payouts';
-const PAYMENT_PACKAGES_COLLECTION = 'payment_packages';
 const FINANCIAL_REPORTS_COLLECTION = 'financial_reports';
 const PAYMENT_SETTINGS_COLLECTION = 'payment_settings';
 

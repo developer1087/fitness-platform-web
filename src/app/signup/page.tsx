@@ -75,7 +75,7 @@ function SignupContent() {
       if (error instanceof Error) {
         const zodError = JSON.parse(error.message);
         const newErrors: Record<string, string> = {};
-        zodError.forEach((err: any) => {
+        zodError.forEach((err: { path: string[]; message: string }) => {
           newErrors[err.path[0]] = err.message;
         });
         setErrors(newErrors);

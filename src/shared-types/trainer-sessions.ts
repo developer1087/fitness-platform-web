@@ -1,7 +1,7 @@
 // Trainer-specific session management types
 // Extends the existing workout types for trainer-client session management
 
-import type { Workout, WorkoutExercise, Exercise, ExerciseSet } from './workout/types';
+import type { Workout, Exercise } from './workout/types';
 
 // Training Session - represents a scheduled session between trainer and trainee
 export interface TrainingSession {

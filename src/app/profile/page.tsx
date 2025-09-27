@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import TrainerLayout from '../../components/TrainerLayout';
-import { updateProfile, updateEmail, updatePassword, sendEmailVerification, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { updateProfile, updatePassword, sendEmailVerification, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import { authService } from '../../lib/auth';
 
@@ -45,7 +45,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [emailVerificationSent, setEmailVerificationSent] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
-  const [showEmailVerification, setShowEmailVerification] = useState(!user?.emailVerified);
+  const [showEmailVerification] = useState(!user?.emailVerified);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState<string>('');
 
