@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import TrainerLayout from '../../components/TrainerLayout';
 import { updateProfile, updateEmail, updatePassword, sendEmailVerification, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
+import { authService } from '../../lib/auth';
 
 interface ProfileFormData {
   firstName: string;
@@ -97,11 +98,12 @@ export default function ProfilePage() {
     if (!formData.lastName.trim()) {
       newErrors.lastName = 'Last name is required';
     }
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email';
-    }
+    // Email validation disabled since email updates are disabled
+    // if (!formData.email.trim()) {
+    //   newErrors.email = 'Email is required';
+    // } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+    //   newErrors.email = 'Please enter a valid email';
+    // }
     if (formData.phone && !/^\+?[\d\s-()]+$/.test(formData.phone)) {
       newErrors.phone = 'Please enter a valid phone number';
     }
@@ -139,31 +141,55 @@ export default function ProfilePage() {
     setSuccess('');
 
     try {
-      // Update display name if it changed
-      if (auth && user.displayName !== `${formData.firstName} ${formData.lastName}`) {
-        await updateProfile(auth.currentUser!, {
-          displayName: `${formData.firstName} ${formData.lastName}`
-        });
+      if (!auth?.currentUser || !user?.uid) {
+        throw new Error('No authenticated user found');
       }
 
-      // Update email if it changed
-      if (auth && user.email !== formData.email) {
-        await updateEmail(auth.currentUser!, formData.email);
-        setShowEmailVerification(true);
+      const currentUser = auth.currentUser;
+      const newDisplayName = `${formData.firstName} ${formData.lastName}`;
+
+      // Update Firebase Auth profile (display name and photo)
+      const authUpdates: any = {};
+
+      if (user.displayName !== newDisplayName) {
+        authUpdates.displayName = newDisplayName;
       }
 
-      // Update profile image if it changed
-      if (auth && profileImage && profileImage !== user.photoURL) {
-        await updateProfile(auth.currentUser!, {
-          photoURL: profileImage
-        });
+      if (profileImage && profileImage !== user.photoURL) {
+        // Only update if it's a base64 image (new upload) or different URL
+        if (profileImage.startsWith('data:') || profileImage !== user.photoURL) {
+          authUpdates.photoURL = profileImage;
+        }
       }
 
-      // In a real app, you would also update additional profile data in Firestore
-      console.log('Profile data to save:', formData);
+      // Apply auth updates if any
+      if (Object.keys(authUpdates).length > 0) {
+        await updateProfile(currentUser, authUpdates);
+      }
 
+      // Update Firestore profile with additional data
+      await authService.updateUserProfile(user.uid, {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+      });
+
+      // Email updates are disabled for now - too complex and require re-authentication
+      // if (user.email !== formData.email) {
+      //   try {
+      //     await updateEmail(currentUser, formData.email);
+      //     setShowEmailVerification(true);
+      //   } catch (emailError: any) {
+      //     if (emailError.code === 'auth/requires-recent-login') {
+      //       throw new Error('Email update requires recent login. Please sign out and sign in again, then try updating your email.');
+      //     }
+      //     throw emailError;
+      //   }
+      // }
+
+      console.log('Profile data saved successfully:', formData);
       setSuccess('Profile updated successfully!');
     } catch (error: any) {
+      console.error('Profile update error:', error);
       setErrors({ general: error.message || 'Failed to update profile' });
     } finally {
       setLoading(false);
@@ -406,8 +432,10 @@ export default function ProfilePage() {
                   type="email"
                   value={formData.email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                  disabled
                 />
+                <p className="text-xs text-gray-500 mt-1">Email changes require special authentication. Contact support to change your email.</p>
                 {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email}</p>}
               </div>
 
