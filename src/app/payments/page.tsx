@@ -10,9 +10,9 @@ import type {
   Payment,
   PaymentAccount,
   FinancialReport,
-  CreateInvoiceFormData,
-  Trainee
-} from '../../shared-types';
+  CreateInvoiceFormData
+} from '../../shared-types/payments';
+import type { Trainee } from '../../shared-types';
 
 export default function PaymentsPage() {
   const { user } = useAuth();
@@ -33,7 +33,7 @@ export default function PaymentsPage() {
     if (user) {
       loadData();
     }
-  }, [user, loadData]);
+  }, [user]);
 
   const loadData = async () => {
     try {
