@@ -79,7 +79,7 @@ export default function ProfilePage() {
     }
   };
 
-  const compressBase64Image = (base64String: string, maxSize = 400, quality = 0.8): Promise<string> => {
+  const compressBase64Image = (base64String: string, maxSize = 200, quality = 0.6): Promise<string> => {
     return new Promise((resolve, reject) => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
@@ -89,41 +89,39 @@ export default function ProfilePage() {
         // Calculate new dimensions while maintaining aspect ratio
         let { width, height } = img;
 
-        // Only resize if the image is larger than maxSize
-        if (width > maxSize || height > maxSize) {
-          if (width > height) {
-            height = (height * maxSize) / width;
-            width = maxSize;
-          } else {
-            width = (width * maxSize) / height;
-            height = maxSize;
-          }
+        // Always resize to ensure we stay within limits
+        if (width > height) {
+          height = (height * maxSize) / width;
+          width = maxSize;
+        } else {
+          width = (width * maxSize) / height;
+          height = maxSize;
         }
 
         canvas.width = width;
         canvas.height = height;
 
-        // Draw image with high quality
+        // Draw image with standard quality to reduce size
         if (ctx) {
           ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
+          ctx.imageSmoothingQuality = 'medium';
           ctx.drawImage(img, 0, 0, width, height);
         }
 
         const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
 
-        // Firebase photoURL limit is actually around 2MB for base64 strings
-        // If still too large, try recursively with smaller size or lower quality
-        if (compressedDataUrl.length > 1500000) { // ~1.5MB limit to be safe
-          if (maxSize > 150) {
+        // Firebase photoURL has a strict limit - be very conservative
+        // The actual limit seems to be around 100KB for reliable operation
+        if (compressedDataUrl.length > 100000) { // 100KB limit for safety
+          if (maxSize > 80) {
             // Try smaller dimensions first
-            compressBase64Image(base64String, maxSize - 50, quality).then(resolve).catch(reject);
-          } else if (quality > 0.3) {
+            compressBase64Image(base64String, maxSize - 20, quality).then(resolve).catch(reject);
+          } else if (quality > 0.2) {
             // Then try lower quality
             compressBase64Image(base64String, maxSize, quality - 0.1).then(resolve).catch(reject);
           } else {
-            // Last resort - very small size
-            compressBase64Image(base64String, 100, 0.5).then(resolve).catch(reject);
+            // Last resort - tiny size with minimal quality
+            compressBase64Image(base64String, 50, 0.1).then(resolve).catch(reject);
           }
         } else {
           resolve(compressedDataUrl);
@@ -238,8 +236,8 @@ export default function ProfilePage() {
         if (profileImage.startsWith('data:')) {
           try {
             const compressedImage = await compressBase64Image(profileImage);
-            // Firebase photoURL can handle up to ~2MB base64 strings
-            if (compressedImage.length > 1500000) {
+            // Firebase photoURL has strict limits - be very conservative
+            if (compressedImage.length > 100000) {
               setErrors({ general: 'Image is too large even after compression. Please try a smaller image.' });
               return;
             }
