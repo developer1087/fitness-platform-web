@@ -39,9 +39,11 @@ function SignupContent() {
     setInvitationError(null);
 
     try {
+      console.log('Loading invitation with token:', token);
       const invitationData = await TraineeService.getInvitationByToken(token);
 
       if (invitationData) {
+        console.log('✅ Invitation loaded successfully:', invitationData);
         setInvitation(invitationData);
         // Pre-fill form with invitation data
         setFormData(prev => ({
@@ -137,8 +139,9 @@ function SignupContent() {
 
       // If there's an invitation, accept it
       if (invitation) {
+        console.log('Attempting to accept invitation:', invitation.id, 'for user:', newUser.uid);
         await TraineeService.acceptInvitation(invitation.id, newUser.uid);
-        console.log('Invitation accepted for:', invitation.id);
+        console.log('✅ Invitation accepted successfully for:', invitation.id);
 
         // For trainee signup, redirect to app store
         redirectToAppStore();
@@ -146,9 +149,34 @@ function SignupContent() {
         // Regular trainer signup - redirect to trainer dashboard
         router.push('/');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Signup error:', error);
-      setErrors({ general: 'Signup failed. Please try again.' });
+
+      // Provide more specific error messages
+      let errorMessage = 'Signup failed. Please try again.';
+
+      if (error?.code) {
+        switch (error.code) {
+          case 'auth/email-already-in-use':
+            errorMessage = 'This email is already registered. Please use a different email or sign in.';
+            break;
+          case 'auth/weak-password':
+            errorMessage = 'Password is too weak. Please choose a stronger password.';
+            break;
+          case 'auth/invalid-email':
+            errorMessage = 'Invalid email address. Please check your email format.';
+            break;
+          case 'auth/operation-not-allowed':
+            errorMessage = 'Email/password accounts are not enabled. Please contact support.';
+            break;
+          default:
+            errorMessage = `Authentication error: ${error.message}`;
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+
+      setErrors({ general: errorMessage });
     } finally {
       setIsSubmitting(false);
     }
