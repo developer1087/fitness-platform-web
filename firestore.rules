@@ -10,36 +10,113 @@ service cloud.firestore {
     // Trainers can read and write their own trainees
     match /trainees/{traineeId} {
       allow read, write: if request.auth != null &&
-        (resource.data.trainerId == request.auth.uid ||
-         request.auth.uid == resource.data.trainerId);
+        (resource == null || resource.data.trainerId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid);
     }
 
     // Trainee invitations - allow trainers to manage their invitations
     match /trainee-invitations/{invitationId} {
       allow read, write: if request.auth != null &&
-        (resource.data.trainerId == request.auth.uid ||
-         request.auth.uid == resource.data.trainerId);
+        (resource == null || resource.data.trainerId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid);
       // Allow reading invitations by token for signup process
-      allow read: if resource.data.token != null;
+      allow read: if resource != null && resource.data.token != null;
     }
 
-    // Sessions, schedules, payments - trainer-specific data
+    // Sessions - trainer and trainee specific data
     match /sessions/{sessionId} {
       allow read, write: if request.auth != null &&
-        (resource.data.trainerId == request.auth.uid ||
-         request.auth.uid == resource.data.trainerId);
+        (resource == null ||
+         resource.data.trainerId == request.auth.uid ||
+         resource.data.traineeId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid ||
+         request.resource.data.traineeId == request.auth.uid);
     }
 
-    match /schedules/{scheduleId} {
+    // Schedule collections - trainer specific
+    match /availability-slots/{slotId} {
       allow read, write: if request.auth != null &&
-        (resource.data.trainerId == request.auth.uid ||
-         request.auth.uid == resource.data.trainerId);
+        (resource == null || resource.data.trainerId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid);
+    }
+
+    match /booking-slots/{slotId} {
+      allow read, write: if request.auth != null &&
+        (resource == null ||
+         resource.data.trainerId == request.auth.uid ||
+         resource.data.traineeId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid ||
+         request.resource.data.traineeId == request.auth.uid);
+    }
+
+    match /recurring-bookings/{bookingId} {
+      allow read, write: if request.auth != null &&
+        (resource == null ||
+         resource.data.trainerId == request.auth.uid ||
+         resource.data.traineeId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid ||
+         request.resource.data.traineeId == request.auth.uid);
+    }
+
+    // Payment collections - trainer specific
+    match /payment-accounts/{accountId} {
+      allow read, write: if request.auth != null &&
+        (resource == null || resource.data.trainerId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid);
+    }
+
+    match /invoices/{invoiceId} {
+      allow read, write: if request.auth != null &&
+        (resource == null ||
+         resource.data.trainerId == request.auth.uid ||
+         resource.data.traineeId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid ||
+         request.resource.data.traineeId == request.auth.uid);
     }
 
     match /payments/{paymentId} {
       allow read, write: if request.auth != null &&
-        (resource.data.trainerId == request.auth.uid ||
-         request.auth.uid == resource.data.trainerId);
+        (resource == null ||
+         resource.data.trainerId == request.auth.uid ||
+         resource.data.traineeId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid ||
+         request.resource.data.traineeId == request.auth.uid);
+    }
+
+    match /payment-methods/{methodId} {
+      allow read, write: if request.auth != null &&
+        (resource == null || resource.data.userId == request.auth.uid ||
+         request.resource.data.userId == request.auth.uid);
+    }
+
+    match /financial-reports/{reportId} {
+      allow read, write: if request.auth != null &&
+        (resource == null || resource.data.trainerId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid);
+    }
+
+    // Session templates and personal records - trainer specific
+    match /session-templates/{templateId} {
+      allow read, write: if request.auth != null &&
+        (resource == null || resource.data.trainerId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid);
+    }
+
+    match /personal-records/{recordId} {
+      allow read, write: if request.auth != null &&
+        (resource == null ||
+         resource.data.trainerId == request.auth.uid ||
+         resource.data.traineeId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid ||
+         request.resource.data.traineeId == request.auth.uid);
+    }
+
+    // Exercises - allow read for all authenticated users, write for trainers
+    match /exercises/{exerciseId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null &&
+        (resource == null || resource.data.trainerId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid);
     }
 
     // Default deny all other requests
