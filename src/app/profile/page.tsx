@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import TrainerLayout from '../../components/TrainerLayout';
 import { updateProfile, updatePassword, sendEmailVerification, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { auth } from '../../lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, storage } from '../../lib/firebase';
 import { authService } from '../../lib/auth';
 
 interface ProfileFormData {
@@ -42,7 +43,9 @@ export default function ProfilePage() {
   });
 
   const [profileImage, setProfileImage] = useState<string | null>(user?.photoURL || null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [emailVerificationSent, setEmailVerificationSent] = useState(false);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [showEmailVerification, setShowEmailVerification] = useState(!user?.emailVerified);
@@ -79,58 +82,30 @@ export default function ProfilePage() {
     }
   };
 
-  const compressBase64Image = (base64String: string, maxSize = 200, quality = 0.6): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
+  const uploadImageToStorage = async (file: File): Promise<string> => {
+    if (!storage) {
+      throw new Error('Firebase Storage not initialized');
+    }
 
-      img.onload = () => {
-        // Calculate new dimensions while maintaining aspect ratio
-        let { width, height } = img;
+    if (!user?.uid) {
+      throw new Error('User not authenticated');
+    }
 
-        // Always resize to ensure we stay within limits
-        if (width > height) {
-          height = (height * maxSize) / width;
-          width = maxSize;
-        } else {
-          width = (width * maxSize) / height;
-          height = maxSize;
-        }
+    // Create a reference to the file location in Firebase Storage
+    const imageRef = ref(storage, `profile-pictures/${user.uid}/${Date.now()}-${file.name}`);
 
-        canvas.width = width;
-        canvas.height = height;
+    try {
+      // Upload the file
+      const snapshot = await uploadBytes(imageRef, file);
 
-        // Draw image with standard quality to reduce size
-        if (ctx) {
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'medium';
-          ctx.drawImage(img, 0, 0, width, height);
-        }
+      // Get the download URL
+      const downloadURL = await getDownloadURL(snapshot.ref);
 
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-
-        // Firebase photoURL has a strict limit - be very conservative
-        // The actual limit seems to be around 100KB for reliable operation
-        if (compressedDataUrl.length > 100000) { // 100KB limit for safety
-          if (maxSize > 80) {
-            // Try smaller dimensions first
-            compressBase64Image(base64String, maxSize - 20, quality).then(resolve).catch(reject);
-          } else if (quality > 0.2) {
-            // Then try lower quality
-            compressBase64Image(base64String, maxSize, quality - 0.1).then(resolve).catch(reject);
-          } else {
-            // Last resort - tiny size with minimal quality
-            compressBase64Image(base64String, 50, 0.1).then(resolve).catch(reject);
-          }
-        } else {
-          resolve(compressedDataUrl);
-        }
-      };
-
-      img.onerror = () => reject(new Error('Failed to load image'));
-      img.src = base64String;
-    });
+      return downloadURL;
+    } catch (error) {
+      console.error('Error uploading image to Firebase Storage:', error);
+      throw new Error('Failed to upload image. Please try again.');
+    }
   };
 
   const handlePasswordChange = (field: string, value: string) => {
@@ -148,11 +123,15 @@ export default function ProfilePage() {
         setErrors(prev => ({ ...prev, image: 'Please select a valid image file' }));
         return;
       }
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        setErrors(prev => ({ ...prev, image: 'Image size must be less than 5MB' }));
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit (Firebase Storage can handle much larger files)
+        setErrors(prev => ({ ...prev, image: 'Image size must be less than 10MB' }));
         return;
       }
 
+      // Store the file for upload later
+      setSelectedFile(file);
+
+      // Preview the image
       const reader = new FileReader();
       reader.onload = (e) => {
         setProfileImage(e.target?.result as string);
@@ -174,12 +153,6 @@ export default function ProfilePage() {
         newErrors.lastName = 'Last name is required';
       }
     }
-    // Email validation disabled since email updates are disabled
-    // if (!formData.email.trim()) {
-    //   newErrors.email = 'Email is required';
-    // } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-    //   newErrors.email = 'Please enter a valid email';
-    // }
     if (formData.phone && !/^\+?[\d\s-()]+$/.test(formData.phone)) {
       newErrors.phone = 'Please enter a valid phone number';
     }
@@ -231,24 +204,19 @@ export default function ProfilePage() {
         authUpdates.displayName = newDisplayName;
       }
 
-      if (profileImage && profileImage !== user.photoURL) {
-        // Handle base64 images by compressing them to fit Firebase URL limits
-        if (profileImage.startsWith('data:')) {
-          try {
-            const compressedImage = await compressBase64Image(profileImage);
-            // Firebase photoURL has strict limits - be very conservative
-            if (compressedImage.length > 100000) {
-              setErrors({ general: 'Image is too large even after compression. Please try a smaller image.' });
-              return;
-            }
-            authUpdates.photoURL = compressedImage;
-          } catch (error) {
-            console.error('Error compressing image:', error);
-            setErrors({ general: 'Failed to process image. Please try a different image.' });
-            return;
-          }
-        } else if (profileImage !== user.photoURL) {
-          authUpdates.photoURL = profileImage;
+      // Handle image upload to Firebase Storage
+      if (selectedFile) {
+        setUploadingImage(true);
+        try {
+          const downloadURL = await uploadImageToStorage(selectedFile);
+          authUpdates.photoURL = downloadURL;
+          setSelectedFile(null); // Clear the selected file after successful upload
+        } catch (error) {
+          console.error('Error uploading image:', error);
+          setErrors({ general: 'Failed to upload image. Please try again.' });
+          return;
+        } finally {
+          setUploadingImage(false);
         }
       }
 
@@ -262,19 +230,6 @@ export default function ProfilePage() {
         firstName: formData.firstName,
         lastName: formData.lastName,
       });
-
-      // Email updates are disabled for now - too complex and require re-authentication
-      // if (user.email !== formData.email) {
-      //   try {
-      //     await updateEmail(currentUser, formData.email);
-      //     setShowEmailVerification(true);
-      //   } catch (emailError: any) {
-      //     if (emailError.code === 'auth/requires-recent-login') {
-      //       throw new Error('Email update requires recent login. Please sign out and sign in again, then try updating your email.');
-      //     }
-      //     throw emailError;
-      //   }
-      // }
 
       console.log('Profile data saved successfully:', formData);
       setSuccess('Profile updated successfully!');
@@ -475,13 +430,17 @@ export default function ProfilePage() {
               <div>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+                  disabled={uploadingImage}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
-                  Upload New Picture
+                  {uploadingImage ? 'Uploading...' : 'Upload New Picture'}
                 </button>
-                {profileImage && (
+                {profileImage && !uploadingImage && (
                   <button
-                    onClick={() => setProfileImage(null)}
+                    onClick={() => {
+                      setProfileImage(null);
+                      setSelectedFile(null);
+                    }}
                     className="ml-2 text-gray-600 hover:text-gray-800"
                   >
                     Remove
@@ -495,7 +454,7 @@ export default function ProfilePage() {
                   className="hidden"
                 />
                 <p className="text-sm text-gray-500 mt-1">
-                  JPG, GIF or PNG. Max size 5MB.
+                  JPG, GIF or PNG. Max size 10MB. Images will be uploaded to secure cloud storage.
                 </p>
                 {errors.image && <p className="text-sm text-red-600 mt-1">{errors.image}</p>}
               </div>
@@ -737,10 +696,10 @@ export default function ProfilePage() {
           <div className="flex justify-end">
             <button
               onClick={() => handleSaveProfile()}
-              disabled={loading}
+              disabled={loading || uploadingImage}
               className="bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium"
             >
-              {loading ? 'Saving...' : 'Save Profile'}
+              {loading ? 'Saving...' : uploadingImage ? 'Uploading Image...' : 'Save Profile'}
             </button>
           </div>
         </div>
