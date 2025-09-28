@@ -84,28 +84,91 @@ export default function ProfilePage() {
 
   const uploadImageToStorage = async (file: File): Promise<string> => {
     if (!storage) {
-      throw new Error('Firebase Storage not initialized');
+      throw new Error('Firebase Storage not initialized. Please check your Firebase configuration.');
     }
 
     if (!user?.uid) {
       throw new Error('User not authenticated');
     }
 
+    // Compress image if it's too large
+    const compressedFile = await compressImage(file);
+
     // Create a reference to the file location in Firebase Storage
-    const imageRef = ref(storage, `profile-pictures/${user.uid}/${Date.now()}-${file.name}`);
+    const imageRef = ref(storage, `profile-pictures/${user.uid}/${Date.now()}-${compressedFile.name}`);
 
     try {
       // Upload the file
-      const snapshot = await uploadBytes(imageRef, file);
+      const snapshot = await uploadBytes(imageRef, compressedFile);
 
       // Get the download URL
       const downloadURL = await getDownloadURL(snapshot.ref);
 
       return downloadURL;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading image to Firebase Storage:', error);
-      throw new Error('Failed to upload image. Please try again.');
+
+      if (error?.code === 'storage/unknown' || error?.message?.includes('CORS')) {
+        throw new Error('Firebase Storage is not properly configured. Please contact support or try again later.');
+      } else if (error?.code === 'storage/unauthorized') {
+        throw new Error('Permission denied. Please check your authentication and try again.');
+      } else if (error?.code === 'storage/quota-exceeded') {
+        throw new Error('Storage quota exceeded. Please try with a smaller image.');
+      } else {
+        throw new Error(`Upload failed: ${error?.message || 'Unknown error'}. Please try again.`);
+      }
     }
+  };
+
+  const compressImage = async (file: File): Promise<File> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+
+      img.onload = () => {
+        const maxWidth = 800;
+        const maxHeight = 800;
+        let { width, height } = img;
+
+        // Calculate new dimensions
+        if (width > height) {
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = (width * maxHeight) / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        // Draw and compress
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name, {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            } else {
+              resolve(file);
+            }
+          },
+          'image/jpeg',
+          0.7 // 70% quality
+        );
+      };
+
+      img.src = URL.createObjectURL(file);
+    });
   };
 
   const handlePasswordChange = (field: string, value: string) => {
