@@ -16,9 +16,14 @@ export class EmailService {
     traineeEmail: string,
     trainerName: string,
     traineeFirstName: string,
-    invitationToken: string
+    invitationToken: string,
+    baseUrl?: string
   ): EmailTemplate {
-    const invitationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/signup?token=${invitationToken}`;
+    // Use dynamic base URL if provided, otherwise fall back to environment variable
+    const appUrl = baseUrl || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const invitationUrl = `${appUrl}/signup?token=${invitationToken}`;
+
+    console.log('Generated invitation URL:', invitationUrl);
 
     const subject = `${trainerName} has invited you to join their fitness program`;
 

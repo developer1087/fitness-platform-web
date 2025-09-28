@@ -279,7 +279,8 @@ export class ProductionEmailService {
     traineeEmail: string,
     trainerName: string,
     traineeFirstName: string,
-    invitationToken: string
+    invitationToken: string,
+    baseUrl?: string
   ): Promise<boolean> {
     try {
       // Import the email template generator from the original service
@@ -289,7 +290,8 @@ export class ProductionEmailService {
         traineeEmail,
         trainerName,
         traineeFirstName,
-        invitationToken
+        invitationToken,
+        baseUrl
       );
 
       return await this.sendEmail(emailTemplate);

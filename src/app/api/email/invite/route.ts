@@ -11,6 +11,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    // Get the current domain from the request
+    const host = req.headers.get('host');
+    const protocol = req.headers.get('x-forwarded-proto') || 'https';
+    const currentUrl = `${protocol}://${host}`;
+
+    console.log('Using dynamic URL for invitation:', currentUrl);
+
     const provider = process.env.EMAIL_PROVIDER;
     if (!provider) {
       return NextResponse.json({ error: 'EMAIL_PROVIDER env var is not set' }, { status: 400 });
@@ -38,7 +45,8 @@ export async function POST(req: NextRequest) {
       traineeEmail,
       trainerName,
       traineeFirstName,
-      invitationToken
+      invitationToken,
+      currentUrl
     );
 
     console.log('Email send result:', ok);
