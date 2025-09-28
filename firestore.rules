@@ -8,19 +8,28 @@ service cloud.firestore {
     }
 
     // Trainers can read and write their own trainees
+    // Trainees can also update their own record when accepting invitations
     match /trainees/{traineeId} {
       allow read, write: if request.auth != null &&
-        (resource == null || resource.data.trainerId == request.auth.uid ||
-         request.resource.data.trainerId == request.auth.uid);
+        (resource == null ||
+         resource.data.trainerId == request.auth.uid ||
+         resource.data.userId == request.auth.uid ||
+         request.resource.data.trainerId == request.auth.uid ||
+         request.resource.data.userId == request.auth.uid);
     }
 
     // Trainee invitations - allow trainers to manage their invitations
+    // Allow trainees to accept their own invitations
     match /trainee_invitations/{invitationId} {
       allow read, write: if request.auth != null &&
         (resource == null || resource.data.trainerId == request.auth.uid ||
          request.resource.data.trainerId == request.auth.uid);
       // Allow reading invitations by token for signup process
       allow read: if resource != null && resource.data.token != null;
+      // Allow trainees to accept invitations (update status to accepted)
+      allow write: if request.auth != null && resource != null &&
+        request.resource.data.status == 'accepted' &&
+        resource.data.status == 'pending';
     }
 
     // Sessions - trainer and trainee specific data
