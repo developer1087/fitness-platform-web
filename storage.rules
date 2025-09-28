@@ -1,0 +1,22 @@
+rules_version = '2';
+
+// Craft rules based on data in your Firestore database
+// Allow authenticated users to manage their own profile pictures
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow authenticated users to upload/read their own profile pictures
+    match /profile-pictures/{userId}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow anyone to read public images (for displaying profile pictures)
+    match /profile-pictures/{userId}/{allPaths=**} {
+      allow read: if true;
+    }
+
+    // Deny all other requests by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

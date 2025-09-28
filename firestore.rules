@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read and write their own profile data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Trainers can read and write their own trainees
+    match /trainees/{traineeId} {
+      allow read, write: if request.auth != null &&
+        (resource.data.trainerId == request.auth.uid ||
+         request.auth.uid == resource.data.trainerId);
+    }
+
+    // Trainee invitations - allow trainers to manage their invitations
+    match /trainee-invitations/{invitationId} {
+      allow read, write: if request.auth != null &&
+        (resource.data.trainerId == request.auth.uid ||
+         request.auth.uid == resource.data.trainerId);
+      // Allow reading invitations by token for signup process
+      allow read: if resource.data.token != null;
+    }
+
+    // Sessions, schedules, payments - trainer-specific data
+    match /sessions/{sessionId} {
+      allow read, write: if request.auth != null &&
+        (resource.data.trainerId == request.auth.uid ||
+         request.auth.uid == resource.data.trainerId);
+    }
+
+    match /schedules/{scheduleId} {
+      allow read, write: if request.auth != null &&
+        (resource.data.trainerId == request.auth.uid ||
+         request.auth.uid == resource.data.trainerId);
+    }
+
+    match /payments/{paymentId} {
+      allow read, write: if request.auth != null &&
+        (resource.data.trainerId == request.auth.uid ||
+         request.auth.uid == resource.data.trainerId);
+    }
+
+    // Default deny all other requests
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,13 @@
+[
+  {
+    "origin": [
+      "https://fitness-platform-5ktjdk9vv-avi-israelis-projects.vercel.app",
+      "https://fitness-platform-web.vercel.app",
+      "http://localhost:3000",
+      "http://localhost:3001"
+    ],
+    "method": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": ["Content-Type", "Authorization"]
+  }
+]
