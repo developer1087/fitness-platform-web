@@ -77,15 +77,38 @@ function SignupContent() {
     const isIOS = /iphone|ipad|ipod/.test(userAgent);
     const isAndroid = /android/.test(userAgent);
 
+    // Get current URL params to pass to mobile app
+    const currentUrl = window.location.href;
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
     if (isIOS) {
-      // Redirect to Apple App Store
-      window.location.href = 'https://apps.apple.com/app/fitness-platform'; // Replace with actual app store URL
+      // Try to open the mobile app first, fallback to App Store
+      const deepLink = `ryzup://signup${token ? `?token=${token}` : ''}`;
+      const appStoreUrl = 'https://apps.apple.com/app/ryzup-fitness'; // Will be updated when published
+
+      // Try deep link first
+      window.location.href = deepLink;
+
+      // Fallback to App Store after a delay if app doesn't open
+      setTimeout(() => {
+        window.location.href = appStoreUrl;
+      }, 1500);
     } else if (isAndroid) {
-      // Redirect to Google Play Store
-      window.location.href = 'https://play.google.com/store/apps/details?id=com.fitnessplatform'; // Replace with actual app store URL
+      // Try to open the mobile app first, fallback to Google Play Store
+      const deepLink = `ryzup://signup${token ? `?token=${token}` : ''}`;
+      const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.ryzup.fitness'; // Will be updated when published
+
+      // Try deep link first
+      window.location.href = deepLink;
+
+      // Fallback to Play Store after a delay if app doesn't open
+      setTimeout(() => {
+        window.location.href = playStoreUrl;
+      }, 1500);
     } else {
       // Desktop or other - show instructions
-      alert('Please download the Fitness Platform app from your device\'s app store to continue as a trainee.');
+      alert('Please download the Ryzup Fitness app from your device\'s app store to continue as a trainee.');
       router.push('/');
     }
   };
