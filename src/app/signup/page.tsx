@@ -154,13 +154,7 @@ function SignupContent() {
       const newUser = userCredential.user;
       console.log('User created:', newUser.uid);
 
-      // Update the user's display name
-      await authService.updateUserProfile(newUser.uid, {
-        firstName: formData.firstName,
-        lastName: formData.lastName
-      });
-
-      // If there's an invitation, accept it
+      // If there's an invitation, accept it (trainee signup)
       if (invitation) {
         console.log('Attempting to accept invitation:', invitation.id, 'for user:', newUser.uid);
         await TraineeService.acceptInvitation(invitation.id, newUser.uid);
@@ -169,7 +163,13 @@ function SignupContent() {
         // For trainee signup, redirect to app store
         redirectToAppStore();
       } else {
-        // Regular trainer signup - redirect to trainer dashboard
+        // Regular trainer signup - create trainer profile
+        await authService.updateUserProfile(newUser.uid, {
+          firstName: formData.firstName,
+          lastName: formData.lastName
+        });
+
+        // Redirect to trainer dashboard
         router.push('/');
       }
     } catch (error: any) {

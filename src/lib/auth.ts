@@ -8,7 +8,7 @@ import {
   updateProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import type { User, LoginCredentials, SignupCredentials, UserProfile } from '../shared-types';
 
@@ -133,7 +133,11 @@ export const authService = {
       throw new Error('Firebase Firestore not initialized');
     }
     const userDoc = doc(db, 'users', uid);
-    await updateDoc(userDoc, updates);
+    // Use setDoc with merge to create document if it doesn't exist
+    await setDoc(userDoc, {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
   },
 
   // Get user profile from Firestore
