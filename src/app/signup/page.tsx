@@ -27,9 +27,19 @@ function SignupContent() {
   const [isLoadingInvitation, setIsLoadingInvitation] = useState(!!invitationToken);
   const [invitationError, setInvitationError] = useState<string | null>(null);
 
-  // Load invitation details if token is provided
+  // Detect mobile and redirect to app store if invitation link
   useEffect(() => {
     if (invitationToken) {
+      const userAgent = navigator.userAgent.toLowerCase();
+      const isMobile = /iphone|ipad|ipod|android/.test(userAgent);
+
+      if (isMobile) {
+        // Redirect mobile users directly to app store
+        redirectToAppStore();
+        return;
+      }
+
+      // Desktop users load the invitation normally
       loadInvitation(invitationToken);
     }
   }, [invitationToken]);
@@ -77,38 +87,46 @@ function SignupContent() {
     const isIOS = /iphone|ipad|ipod/.test(userAgent);
     const isAndroid = /android/.test(userAgent);
 
-    // Get current URL params to pass to mobile app
-    const currentUrl = window.location.href;
+    // Get invitation token from URL
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
 
     if (isIOS) {
-      // Try to open the mobile app first, fallback to App Store
-      const deepLink = `ryzup://signup${token ? `?token=${token}` : ''}`;
-      const appStoreUrl = 'https://apps.apple.com/app/ryzup-fitness'; // Will be updated when published
+      // For iOS: Use Universal Links or fallback to App Store
+      const appStoreUrl = 'https://apps.apple.com/app/ryzup-fitness'; // Update when published
+      const deepLink = `ryzup://invitation?token=${token || ''}`;
 
-      // Try deep link first
-      window.location.href = deepLink;
+      // Show user a message about downloading the app
+      const message = 'To complete your signup, please download the Ryzup Fitness app from the App Store.';
 
-      // Fallback to App Store after a delay if app doesn't open
+      // Try to open the app if installed
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = deepLink;
+      document.body.appendChild(iframe);
+
+      // Redirect to App Store
       setTimeout(() => {
+        document.body.removeChild(iframe);
         window.location.href = appStoreUrl;
-      }, 1500);
+      }, 2000);
+
     } else if (isAndroid) {
-      // Try to open the mobile app first, fallback to Google Play Store
-      const deepLink = `ryzup://signup${token ? `?token=${token}` : ''}`;
-      const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.ryzup.fitness'; // Will be updated when published
+      // For Android: Use intent:// URL or fallback to Play Store
+      const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.ryzup.fitness';
+      const intentUrl = `intent://invitation?token=${token || ''}#Intent;scheme=ryzup;package=com.ryzup.fitness;end`;
 
-      // Try deep link first
-      window.location.href = deepLink;
+      // Redirect to Play Store with intent fallback
+      window.location.href = intentUrl;
 
-      // Fallback to Play Store after a delay if app doesn't open
+      // Fallback to Play Store if app not installed
       setTimeout(() => {
         window.location.href = playStoreUrl;
-      }, 1500);
+      }, 2000);
+
     } else {
-      // Desktop or other - show instructions
-      alert('Please download the Ryzup Fitness app from your device\'s app store to continue as a trainee.');
+      // Desktop - show instructions
+      alert('Please open this link on your mobile device to download the Ryzup Fitness app and complete your signup.');
       router.push('/');
     }
   };
