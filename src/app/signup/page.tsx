@@ -234,7 +234,7 @@ function SignupContent() {
               {invitationError}
             </p>
             <div className="mt-4">
-              <Link href="/login" className="text-blue-600 hover:text-blue-500">
+              <Link href="/auth/login" className="text-blue-600 hover:text-blue-500">
                 Go to Login
               </Link>
             </div>
@@ -408,7 +408,7 @@ function SignupContent() {
           <div className="text-center">
             <span className="text-sm text-gray-600">
               Already have an account?{' '}
-              <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
+              <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
                 Sign in
               </Link>
             </span>
