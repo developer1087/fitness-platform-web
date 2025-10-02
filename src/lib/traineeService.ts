@@ -189,6 +189,31 @@ export class TraineeService {
     }
   }
 
+  // Get trainee by Firebase Auth user ID
+  static async getTraineeByUserId(userId: string): Promise<Trainee | null> {
+    try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
+      const traineesQuery = query(
+        collection(db, TRAINEES_COLLECTION),
+        where('userId', '==', userId)
+      );
+
+      const snapshot = await getDocs(traineesQuery);
+
+      if (snapshot.empty) {
+        return null;
+      }
+
+      const doc = snapshot.docs[0];
+      return { id: doc.id, ...doc.data() } as Trainee;
+    } catch (error) {
+      console.error('Error getting trainee by user ID:', error);
+      throw error;
+    }
+  }
+
   // Update trainee
   static async updateTrainee(traineeId: string, updates: Partial<Trainee>): Promise<void> {
     try {

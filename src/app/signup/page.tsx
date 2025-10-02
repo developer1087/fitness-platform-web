@@ -27,20 +27,12 @@ function SignupContent() {
   const [isLoadingInvitation, setIsLoadingInvitation] = useState(!!invitationToken);
   const [invitationError, setInvitationError] = useState<string | null>(null);
 
-  // Detect mobile and redirect to app store if invitation link
+  // Block ALL invitation-based signups on web - trainees must use mobile app
   useEffect(() => {
     if (invitationToken) {
-      const userAgent = navigator.userAgent.toLowerCase();
-      const isMobile = /iphone|ipad|ipod|android/.test(userAgent);
-
-      if (isMobile) {
-        // Redirect mobile users directly to app store
-        redirectToAppStore();
-        return;
-      }
-
-      // Desktop users load the invitation normally
-      loadInvitation(invitationToken);
+      // Block form submission - trainees can only sign up via mobile app
+      setInvitationError('Trainee signups must be completed via the mobile app. Please open this link on your mobile device to download the Ryzup Fitness app and complete your signup.');
+      setIsLoadingInvitation(false);
     }
   }, [invitationToken]);
 
@@ -238,24 +230,58 @@ function SignupContent() {
   }
 
   if (invitationError) {
+    // Check if this is an invitation token error (requires mobile app)
+    const isMobileRequired = invitationToken && invitationError.includes('mobile app');
+
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div className="text-center">
-            <svg className="mx-auto h-12 w-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.732 18.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-              Invitation Error
-            </h2>
-            <p className="mt-2 text-center text-sm text-red-600">
-              {invitationError}
-            </p>
-            <div className="mt-4">
-              <Link href="/auth/login" className="text-blue-600 hover:text-blue-500">
-                Go to Login
-              </Link>
-            </div>
+            {isMobileRequired ? (
+              <>
+                <div className="mx-auto h-16 w-16 flex items-center justify-center bg-blue-100 rounded-full">
+                  <svg className="h-10 w-10 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                  Mobile App Required
+                </h2>
+                <p className="mt-4 text-center text-base text-gray-700">
+                  {invitationError}
+                </p>
+                <div className="mt-8 space-y-4">
+                  <div className="bg-white rounded-lg shadow p-6 text-left">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">How to complete your signup:</h3>
+                    <ol className="list-decimal list-inside space-y-2 text-sm text-gray-600">
+                      <li>Open this invitation link on your iPhone or Android device</li>
+                      <li>Download the Ryzup Fitness app from the App Store or Google Play</li>
+                      <li>Complete your signup in the app</li>
+                    </ol>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    If you're a trainer, please <Link href="/auth/signup" className="text-blue-600 hover:text-blue-500">sign up here</Link> instead.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <svg className="mx-auto h-12 w-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.732 18.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                  Invitation Error
+                </h2>
+                <p className="mt-2 text-center text-sm text-red-600">
+                  {invitationError}
+                </p>
+                <div className="mt-4">
+                  <Link href="/auth/login" className="text-blue-600 hover:text-blue-500">
+                    Go to Login
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
