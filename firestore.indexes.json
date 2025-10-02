@@ -1,7 +1,7 @@
 {
   "indexes": [
     {
-      "collectionGroup": "availability-slots",
+      "collectionGroup": "sessions",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -9,21 +9,17 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "isAvailable",
+          "fieldPath": "scheduledDate",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "dayOfWeek",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "startTime",
+          "fieldPath": "__name__",
           "order": "ASCENDING"
         }
       ]
     },
     {
-      "collectionGroup": "scheduled-sessions",
+      "collectionGroup": "bookings",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -37,11 +33,15 @@
         {
           "fieldPath": "startTime",
           "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
         }
       ]
     },
     {
-      "collectionGroup": "sessions",
+      "collectionGroup": "availability",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -49,67 +49,51 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "scheduledDate",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "sessions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "traineeId",
+          "fieldPath": "dayOfWeek",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "scheduledDate",
-          "order": "DESCENDING"
+          "fieldPath": "startTime",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
         }
       ]
     },
     {
-      "collectionGroup": "trainees",
+      "collectionGroup": "payments",
       "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "trainerId",
           "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "joinDate",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "trainee-invites",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "trainerId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "invitedAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "payment-methods",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "userId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "isDefault",
-          "order": "DESCENDING"
         },
         {
           "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "invoices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "trainerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
           "order": "DESCENDING"
         }
       ]
