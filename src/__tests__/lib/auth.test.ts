@@ -87,7 +87,7 @@ describe('authService', () => {
         email: 'test@example.com',
         displayName: 'Test User',
         emailVerified: true,
-        role: 'user',
+        role: 'trainer',
         profile: expect.any(Object),
       }));
     });
@@ -166,7 +166,7 @@ describe('authService', () => {
         expect.objectContaining({
           firstName: 'John',
           lastName: 'Doe',
-          role: 'user',
+          role: 'trainer',
           createdAt: expect.any(String),
           lastLoginAt: expect.any(String),
         })
@@ -175,7 +175,7 @@ describe('authService', () => {
       expect(result).toEqual(expect.objectContaining({
         uid: 'new-user-uid',
         email: 'newuser@example.com',
-        role: 'user',
+        role: 'trainer',
         profile: expect.any(Object),
       }));
     });
@@ -287,7 +287,7 @@ describe('authService', () => {
         expect.objectContaining({
           firstName: 'John',
           lastName: 'Doe',
-          role: 'user',
+          role: 'trainer',
           createdAt: expect.any(String),
           lastLoginAt: expect.any(String),
         })

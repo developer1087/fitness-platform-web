@@ -29,7 +29,7 @@ describe('useAuth hook', () => {
       emailVerified: firebaseUser.emailVerified,
       createdAt: '2023-01-01T00:00:00.000Z',
       lastLoginAt: '2023-01-01T00:00:00.000Z',
-      role: 'user',
+      role: 'trainer',
       profile: {
         firstName: 'Test',
         lastName: 'User',
@@ -80,7 +80,7 @@ describe('useAuth hook', () => {
       emailVerified: true,
       createdAt: '2023-01-01T00:00:00.000Z',
       lastLoginAt: '2023-01-01T00:00:00.000Z',
-      role: 'user',
+      role: 'trainer',
       profile: expect.any(Object),
     };
 
@@ -111,7 +111,7 @@ describe('useAuth hook', () => {
         email: 'test@example.com',
         displayName: 'Test User',
         emailVerified: true,
-        role: 'user',
+        role: 'trainer',
       }));
       expect(result.current.loading).toBe(false);
       expect(result.current.error).toBe(null);
@@ -161,7 +161,7 @@ describe('useAuth hook', () => {
       emailVerified: false,
       createdAt: '2023-01-01T00:00:00.000Z',
       lastLoginAt: '2023-01-01T00:00:00.000Z',
-      role: 'user',
+      role: 'trainer',
       profile: expect.any(Object),
     };
 
@@ -195,7 +195,7 @@ describe('useAuth hook', () => {
         email: 'newuser@example.com',
         displayName: 'John Doe',
         emailVerified: false,
-        role: 'user',
+        role: 'trainer',
       }));
       expect(result.current.loading).toBe(false);
       expect(result.current.error).toBe(null);
@@ -366,7 +366,7 @@ describe('useAuth hook', () => {
         email: 'test@example.com',
         displayName: 'Test User',
         emailVerified: true,
-        role: 'user',
+        role: 'trainer',
       }));
     });
 
