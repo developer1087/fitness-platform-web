@@ -143,7 +143,7 @@ export default function TraineesPage() {
   }
 
   const filteredTrainees = trainees.filter(trainee => {
-    const matchesSearch = `${trainee.firstName} ${trainee.lastName} ${trainee.email}`
+    const matchesSearch = `${trainee.firstName} ${trainee.lastName} ${trainee.email || ''} ${trainee.phoneNumber || ''}`
       .toLowerCase()
       .includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || trainee.status === statusFilter;
@@ -268,7 +268,10 @@ export default function TraineesPage() {
                         <h3 className="text-lg font-semibold text-gray-900">
                           {trainee.firstName} {trainee.lastName}
                         </h3>
-                        <p className="text-sm text-gray-600">{trainee.email}</p>
+                        <p className="text-sm text-gray-600">{trainee.phoneNumber}</p>
+                        {trainee.email && (
+                          <p className="text-xs text-gray-500">{trainee.email}</p>
+                        )}
                       </div>
                     </div>
 

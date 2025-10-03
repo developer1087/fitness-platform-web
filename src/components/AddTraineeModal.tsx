@@ -32,6 +32,7 @@ export default function AddTraineeModal({ isOpen, onClose, onSubmit }: AddTraine
   const [formData, setFormData] = useState<TraineeInvitationFormData>({
     firstName: '',
     lastName: '',
+    phoneNumber: '',
     email: '',
     fitnessLevel: 'beginner',
     goals: [],
@@ -89,6 +90,7 @@ export default function AddTraineeModal({ isOpen, onClose, onSubmit }: AddTraine
       setFormData({
         firstName: '',
         lastName: '',
+        phoneNumber: '',
         email: '',
         fitnessLevel: 'beginner',
         goals: [],
@@ -168,22 +170,44 @@ export default function AddTraineeModal({ isOpen, onClose, onSubmit }: AddTraine
                 </div>
 
                 <div className="mt-4">
+                  <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    id="phoneNumber"
+                    value={formData.phoneNumber}
+                    onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      errors.phoneNumber ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="05XXXXXXXX"
+                    maxLength={10}
+                  />
+                  {errors.phoneNumber && (
+                    <p className="mt-1 text-sm text-red-600">{errors.phoneNumber}</p>
+                  )}
+                  <p className="mt-1 text-xs text-gray-500">Israeli mobile number (10 digits, e.g., 0501234567)</p>
+                </div>
+
+                <div className="mt-4">
                   <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email Address *
+                    Email Address <span className="text-gray-500 font-normal">(Optional - Fallback)</span>
                   </label>
                   <input
                     type="email"
                     id="email"
-                    value={formData.email}
+                    value={formData.email || ''}
                     onChange={(e) => handleInputChange('email', e.target.value)}
                     className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                       errors.email ? 'border-red-500' : 'border-gray-300'
                     }`}
-                    placeholder="trainee@example.com"
+                    placeholder="trainee@example.com (optional)"
                   />
                   {errors.email && (
                     <p className="mt-1 text-sm text-red-600">{errors.email}</p>
                   )}
+                  <p className="mt-1 text-xs text-gray-500">Used as fallback if SMS invitation fails</p>
                 </div>
               </div>
 

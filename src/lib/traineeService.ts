@@ -45,29 +45,29 @@ export class TraineeService {
         throw new Error('Firebase Firestore not initialized');
       }
 
-      // Check if trainee with this email already exists for this trainer
+      // Check if trainee with this phone number already exists for this trainer
       const existingTraineeQuery = query(
         collection(db, TRAINEES_COLLECTION),
         where('trainerId', '==', trainerId),
-        where('email', '==', invitationData.email)
+        where('phoneNumber', '==', invitationData.phoneNumber)
       );
       const existingTraineeSnapshot = await getDocs(existingTraineeQuery);
 
       if (!existingTraineeSnapshot.empty) {
-        throw new Error('A trainee with this email already exists');
+        throw new Error('A trainee with this phone number already exists');
       }
 
-      // Check if there's already a pending invitation for this email
+      // Check if there's already a pending invitation for this phone number
       const existingInvitationQuery = query(
         collection(db, TRAINEE_INVITATIONS_COLLECTION),
         where('trainerId', '==', trainerId),
-        where('email', '==', invitationData.email),
+        where('phoneNumber', '==', invitationData.phoneNumber),
         where('status', '==', 'pending')
       );
       const existingInvitationSnapshot = await getDocs(existingInvitationQuery);
 
       if (!existingInvitationSnapshot.empty) {
-        throw new Error('An invitation is already pending for this email');
+        throw new Error('An invitation is already pending for this phone number');
       }
 
       const inviteToken = generateInviteToken();
@@ -76,6 +76,7 @@ export class TraineeService {
 
       const invitationRecord: Omit<TraineeInvitationRecord, 'id'> = {
         trainerId,
+        phoneNumber: invitationData.phoneNumber,
         email: invitationData.email,
         firstName: invitationData.firstName,
         lastName: invitationData.lastName,
@@ -97,6 +98,7 @@ export class TraineeService {
       // Create pending trainee record
       const traineeRecord: Omit<Trainee, 'id'> = {
         trainerId,
+        phoneNumber: invitationData.phoneNumber,
         email: invitationData.email,
         firstName: invitationData.firstName,
         lastName: invitationData.lastName,
@@ -107,18 +109,21 @@ export class TraineeService {
         notes: invitationData.notes,
         totalSessions: 0,
         invitationId: invitationRef.id,
+        authMethod: 'phone', // Default to phone auth for new invitations
       };
 
       await addDoc(collection(db, TRAINEES_COLLECTION), traineeRecord);
 
-      // Send invitation email via server API (non-blocking for UX)
+      // Send invitation SMS (primary) and email (fallback) via server API (non-blocking for UX)
       try {
         const trainerName = auth?.currentUser?.displayName || 'Your Trainer';
-        void fetch('/api/email/invite', {
+
+        // Send SMS invitation (primary method)
+        void fetch('/api/sms/invite', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            traineeEmail: invitationData.email,
+            phoneNumber: invitationData.phoneNumber,
             trainerName,
             traineeFirstName: invitationData.firstName,
             invitationToken: inviteToken,
@@ -126,14 +131,35 @@ export class TraineeService {
         }).then(async (res) => {
           if (!res.ok) {
             const msg = await res.text();
-            console.warn('Invitation email API responded with non-OK:', msg);
+            console.warn('Invitation SMS API responded with non-OK:', msg);
           }
         }).catch((err) => {
-          console.warn('Invitation email API call failed:', err);
+          console.warn('Invitation SMS API call failed:', err);
         });
-      } catch (emailError) {
-        console.error('Error initiating invitation email:', emailError);
-        // Don't fail the entire operation if email fails
+
+        // Send email invitation if email is provided (fallback method)
+        if (invitationData.email) {
+          void fetch('/api/email/invite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              traineeEmail: invitationData.email,
+              trainerName,
+              traineeFirstName: invitationData.firstName,
+              invitationToken: inviteToken,
+            }),
+          }).then(async (res) => {
+            if (!res.ok) {
+              const msg = await res.text();
+              console.warn('Invitation email API responded with non-OK:', msg);
+            }
+          }).catch((err) => {
+            console.warn('Invitation email API call failed:', err);
+          });
+        }
+      } catch (invitationError) {
+        console.error('Error initiating invitation SMS/email:', invitationError);
+        // Don't fail the entire operation if SMS/email fails
       }
 
       return invitationRef.id;
@@ -214,6 +240,32 @@ export class TraineeService {
     }
   }
 
+  // Get trainee by phone number
+  static async getTraineeByPhone(trainerId: string, phoneNumber: string): Promise<Trainee | null> {
+    try {
+      if (!db) {
+        throw new Error('Firebase Firestore not initialized');
+      }
+      const traineesQuery = query(
+        collection(db, TRAINEES_COLLECTION),
+        where('trainerId', '==', trainerId),
+        where('phoneNumber', '==', phoneNumber)
+      );
+
+      const snapshot = await getDocs(traineesQuery);
+
+      if (snapshot.empty) {
+        return null;
+      }
+
+      const doc = snapshot.docs[0];
+      return { id: doc.id, ...doc.data() } as Trainee;
+    } catch (error) {
+      console.error('Error getting trainee by phone number:', error);
+      throw error;
+    }
+  }
+
   // Update trainee
   static async updateTrainee(traineeId: string, updates: Partial<Trainee>): Promise<void> {
     try {
@@ -241,17 +293,17 @@ export class TraineeService {
       if (traineeSnap.exists()) {
         const traineeData = traineeSnap.data() as any;
         const trainerId = traineeData.trainerId as string | undefined;
-        const email = traineeData.email as string | undefined;
+        const phoneNumber = traineeData.phoneNumber as string | undefined;
 
         // Delete the trainee document first
         await deleteDoc(traineeRef);
 
-        // If we have identifiers, also delete ALL invitations for this trainee email (any status)
-        if (trainerId && email) {
+        // If we have identifiers, also delete ALL invitations for this trainee phone number (any status)
+        if (trainerId && phoneNumber) {
           const allInvitesQuery = query(
             collection(db, TRAINEE_INVITATIONS_COLLECTION),
             where('trainerId', '==', trainerId),
-            where('email', '==', email)
+            where('phoneNumber', '==', phoneNumber)
           );
           const allInvitesSnap = await getDocs(allInvitesQuery);
           const deletePromises: Promise<void>[] = [];
