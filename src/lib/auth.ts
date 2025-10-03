@@ -114,14 +114,14 @@ export const authService = {
   },
 
   // Create user profile in Firestore
-  async createUserProfile(uid: string, profile: UserProfile): Promise<void> {
+  async createUserProfile(uid: string, profile: UserProfile, role: 'trainer' | 'trainee' = 'trainer'): Promise<void> {
     if (!db) {
       throw new Error('Firebase Firestore not initialized');
     }
     const userDoc = doc(db, 'users', uid);
     await setDoc(userDoc, {
       ...profile,
-      role: 'user',
+      role,
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),
     });
@@ -156,7 +156,30 @@ export const authService = {
 
   // Create User object from Firebase User
   async createUserObject(firebaseUser: FirebaseUser): Promise<User> {
-    const profile = await this.getUserProfile(firebaseUser.uid);
+    if (!db) {
+      throw new Error('Firebase Firestore not initialized');
+    }
+
+    // Fetch user document to get role
+    const userDoc = doc(db, 'users', firebaseUser.uid);
+    const userSnap = await getDoc(userDoc);
+
+    let role: 'trainer' | 'trainee' | 'admin' = 'trainer'; // Default to trainer
+    let profile: UserProfile | null = null;
+
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      role = userData.role || 'trainer';
+      profile = {
+        firstName: userData.firstName || '',
+        lastName: userData.lastName || '',
+        dateOfBirth: userData.dateOfBirth,
+        gender: userData.gender,
+        fitnessLevel: userData.fitnessLevel,
+        goals: userData.goals,
+        preferences: userData.preferences,
+      };
+    }
 
     return {
       uid: firebaseUser.uid,
@@ -166,7 +189,7 @@ export const authService = {
       emailVerified: firebaseUser.emailVerified,
       createdAt: firebaseUser.metadata.creationTime || new Date().toISOString(),
       lastLoginAt: firebaseUser.metadata.lastSignInTime || new Date().toISOString(),
-      role: 'user', // Default role, could be fetched from Firestore
+      role,
       profile: profile || {
         firstName: '',
         lastName: '',

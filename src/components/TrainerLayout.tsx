@@ -1,9 +1,8 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../hooks/useAuth';
-import { TraineeService } from '../lib/traineeService';
 
 interface TrainerLayoutProps {
   children: ReactNode;
@@ -11,42 +10,13 @@ interface TrainerLayoutProps {
 }
 
 export default function TrainerLayout({ children, currentPage = 'dashboard' }: TrainerLayoutProps) {
-  const { user, signOut } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const router = useRouter();
-  const [isCheckingRole, setIsCheckingRole] = useState(true);
-  const [isTrainee, setIsTrainee] = useState(false);
 
-  useEffect(() => {
-    const checkUserRole = async () => {
-      if (!user) {
-        setIsCheckingRole(false);
-        return;
-      }
+  // Check if user is a trainee based on their role
+  const isTrainee = user?.role === 'trainee';
 
-      try {
-        // Check if this user exists in the trainees collection
-        const traineeData = await TraineeService.getTraineeByUserId(user.uid);
-
-        if (traineeData) {
-          // User is a trainee - block access to trainer dashboard
-          setIsTrainee(true);
-        } else {
-          // User is NOT a trainee - allow access (they're a trainer)
-          setIsTrainee(false);
-        }
-      } catch (error) {
-        console.error('Error checking user role:', error);
-        // On error, assume trainer (safer to allow access than block)
-        setIsTrainee(false);
-      } finally {
-        setIsCheckingRole(false);
-      }
-    };
-
-    checkUserRole();
-  }, [user]);
-
-  if (!user || isCheckingRole) {
+  if (!user || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">

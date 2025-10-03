@@ -32,7 +32,7 @@ export interface UserPreferences {
 }
 
 
-export type UserRole = 'user' | 'trainer' | 'admin';
+export type UserRole = 'trainee' | 'trainer' | 'admin';
 
 export interface AuthState {
   user: User | null;

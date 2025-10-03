@@ -338,6 +338,12 @@ export class TraineeService {
           status: 'active',
           updatedAt: new Date().toISOString(),
         });
+
+        // Update user role to 'trainee' in users collection
+        const userRef = doc(db, 'users', userId);
+        await updateDoc(userRef, {
+          role: 'trainee',
+        });
       }
     } catch (error) {
       console.error('Error accepting invitation:', error);
