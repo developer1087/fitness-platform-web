@@ -52,7 +52,7 @@ function SignupContent() {
           ...prev,
           firstName: invitationData.firstName,
           lastName: invitationData.lastName,
-          email: invitationData.email,
+          email: invitationData.email || '',
         }));
       } else {
         setInvitationError('Invalid or expired invitation link. Please contact your trainer for a new invitation.');
