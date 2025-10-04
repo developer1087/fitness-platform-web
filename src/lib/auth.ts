@@ -166,10 +166,14 @@ export const authService = {
 
     let role: 'trainer' | 'trainee' | 'admin' = 'trainer'; // Default to trainer
     let profile: UserProfile | null = null;
+    let phoneNumber: string | null = null;
+    let authMethod: 'phone' | 'email' | 'google' = 'email';
 
     if (userSnap.exists()) {
       const userData = userSnap.data();
       role = userData.role || 'trainer';
+      phoneNumber = userData.phoneNumber || null;
+      authMethod = userData.authMethod || 'email';
       profile = {
         firstName: userData.firstName || '',
         lastName: userData.lastName || '',
@@ -184,6 +188,8 @@ export const authService = {
     return {
       uid: firebaseUser.uid,
       email: firebaseUser.email,
+      phoneNumber,
+      authMethod,
       displayName: firebaseUser.displayName,
       photoURL: firebaseUser.photoURL,
       emailVerified: firebaseUser.emailVerified,
