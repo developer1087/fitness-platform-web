@@ -56,6 +56,10 @@ export class SMSService {
         case 'twilio':
           return await this.sendViaTwilio(formattedPhone, message);
 
+        case 'vonage':
+        case 'nexmo':
+          return await this.sendViaVonage(formattedPhone, message);
+
         case 'aws-sns':
           return await this.sendViaAWSSNS(formattedPhone, message);
 
@@ -118,6 +122,65 @@ export class SMSService {
       return true;
     } catch (error) {
       console.error('Twilio send error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send SMS via Vonage (Nexmo)
+   * Requires: VONAGE_API_KEY, VONAGE_API_SECRET, VONAGE_FROM (brand name or number)
+   */
+  private static async sendViaVonage(to: string, message: string): Promise<boolean> {
+    try {
+      const apiKey = process.env.VONAGE_API_KEY;
+      const apiSecret = process.env.VONAGE_API_SECRET;
+      const from = process.env.VONAGE_FROM || 'Ryzup';
+
+      if (!apiKey || !apiSecret) {
+        console.error('Missing Vonage credentials');
+        return false;
+      }
+
+      // Vonage SMS API
+      const url = 'https://rest.nexmo.com/sms/json';
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          api_key: apiKey,
+          api_secret: apiSecret,
+          to: to.replace('+', ''), // Vonage wants number without + prefix
+          from: from,
+          text: message,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error('Vonage error:', error);
+        return false;
+      }
+
+      const data = await response.json();
+
+      // Vonage returns array of message objects
+      if (data.messages && data.messages[0]) {
+        const msg = data.messages[0];
+        if (msg.status === '0') {
+          console.log('SMS sent via Vonage:', msg['message-id']);
+          return true;
+        } else {
+          console.error('Vonage SMS failed:', msg['error-text']);
+          return false;
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Vonage send error:', error);
       return false;
     }
   }
