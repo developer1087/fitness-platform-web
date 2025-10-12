@@ -26,7 +26,9 @@ export default function SchedulePage() {
   // Modal states
   const [showCreateBookingModal, setShowCreateBookingModal] = useState(false);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [showSessionDetailsModal, setShowSessionDetailsModal] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ date: string; time: string } | null>(null);
+  const [selectedSession, setSelectedSession] = useState<BookingSlot | null>(null);
 
   // Load data
   useEffect(() => {
@@ -91,7 +93,12 @@ export default function SchedulePage() {
             startTime: session.startTime,
             endTime: endTime,
             duration: session.duration,
-            status: session.status === 'scheduled' || session.status === 'in_progress' ? 'booked' : session.status as any,
+            // Map session status to booking slot status
+            status: (() => {
+              if (session.status === 'completed') return 'completed' as any;
+              if (session.status === 'cancelled') return 'cancelled' as any;
+              return 'booked' as any; // scheduled, in_progress, etc.
+            })(),
             sessionType: session.type,
             isRecurring: false,
             location: session.location || '',
@@ -115,6 +122,11 @@ export default function SchedulePage() {
   const handleTimeSlotClick = (date: string, time: string) => {
     setSelectedTimeSlot({ date, time });
     setShowCreateBookingModal(true);
+  };
+
+  const handleSessionClick = (session: BookingSlot) => {
+    setSelectedSession(session);
+    setShowSessionDetailsModal(true);
   };
 
   const handleCreateBooking = async (bookingData: BookSlotFormData) => {
@@ -198,7 +210,7 @@ export default function SchedulePage() {
       booking.date === date &&
       booking.startTime <= time &&
       booking.endTime > time &&
-      booking.status === 'booked'
+      (booking.status === 'booked' || booking.status === 'completed' || booking.status === 'cancelled')
     );
   };
 
@@ -217,7 +229,7 @@ export default function SchedulePage() {
       booking.date === date &&
       booking.startTime <= time &&
       booking.endTime > time &&
-      booking.status === 'booked'
+      (booking.status === 'booked' || booking.status === 'completed' || booking.status === 'cancelled')
     );
   };
 
@@ -343,6 +355,7 @@ export default function SchedulePage() {
             weekDays={getWeekDays()}
             timeSlots={getTimeSlots()}
             onTimeSlotClick={handleTimeSlotClick}
+            onSessionClick={handleSessionClick}
             isSlotBooked={isSlotBooked}
             isSlotAvailable={isSlotAvailable}
             getBookingForSlot={getBookingForSlot}
@@ -378,6 +391,19 @@ export default function SchedulePage() {
           onSubmit={handleCreateAvailability}
         />
       )}
+
+      {/* Session Details Modal */}
+      {showSessionDetailsModal && selectedSession && (
+        <SessionDetailsModal
+          isOpen={showSessionDetailsModal}
+          session={selectedSession}
+          trainee={trainees.find(t => t.id === selectedSession.traineeId || (t as any).userId === selectedSession.traineeId)}
+          onClose={() => {
+            setShowSessionDetailsModal(false);
+            setSelectedSession(null);
+          }}
+        />
+      )}
     </TrainerLayout>
   );
 }
@@ -387,6 +413,7 @@ function WeekView({
   weekDays,
   timeSlots,
   onTimeSlotClick,
+  onSessionClick,
   isSlotBooked,
   isSlotAvailable,
   getBookingForSlot,
@@ -431,26 +458,38 @@ function WeekView({
               const isAvailable = isSlotAvailable(dateStr, time);
               const booking = getBookingForSlot(dateStr, time);
 
+              // Determine if this is the first slot of the session
+              const isFirstSlot = booking && booking.startTime === time;
+
+              // Get colors based on status
+              const getSessionColors = (status: string) => {
+                if (status === 'completed') return { bg: 'bg-emerald-100', border: 'border-emerald-200', pill: 'bg-emerald-600' };
+                if (status === 'cancelled') return { bg: 'bg-red-100', border: 'border-red-200', pill: 'bg-red-600' };
+                return { bg: 'bg-blue-100', border: 'border-blue-200', pill: 'bg-blue-600' }; // booked/scheduled
+              };
+
+              const colors = booking ? getSessionColors(booking.status) : null;
+
               return (
                 <div
                   key={dayIndex}
-                  onClick={() => !isBooked && onTimeSlotClick(dateStr, time)}
+                  onClick={() => booking ? onSessionClick(booking) : onTimeSlotClick(dateStr, time)}
                   className={`p-2 border-r last:border-r-0 h-12 relative cursor-pointer transition-colors ${
-                    isBooked
-                      ? 'bg-blue-100 border-blue-200'
+                    isBooked && colors
+                      ? `${colors.bg} ${colors.border}`
                       : isAvailable
                       ? 'bg-green-50 hover:bg-green-100'
                       : 'bg-gray-50 hover:bg-gray-100'
                   }`}
                 >
-                  {isBooked && booking && (() => {
-                    // Find trainee by document ID or userId
+                  {isBooked && booking && isFirstSlot && (() => {
+                    // Only show trainee name in the first time slot of the session
                     const trainee = trainees.find((t: any) => t.id === booking.traineeId || t.userId === booking.traineeId);
                     const displayName = trainee ? `${trainee.firstName} ${trainee.lastName}` : 'Session';
 
                     return (
-                      <div className="absolute inset-1 bg-blue-600 text-white text-xs rounded p-1 flex items-center justify-center">
-                        <span className="truncate" title={`${displayName} - ${booking.sessionType}`}>
+                      <div className={`absolute inset-1 ${colors?.pill} text-white text-xs rounded p-1 flex items-center justify-center hover:opacity-90`}>
+                        <span className="truncate" title={`${displayName} - ${booking.sessionType} (${booking.status})`}>
                           {displayName}
                         </span>
                       </div>
@@ -706,6 +745,103 @@ function CreateAvailabilityModal({ isOpen, onClose, onSubmit }: any) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// Session Details Modal Component
+function SessionDetailsModal({ isOpen, session, trainee, onClose }: any) {
+  if (!isOpen) return null;
+
+  const sessionDate = new Date(session.date);
+  const [hours, minutes] = session.startTime.split(':').map(Number);
+  const startTimeDisplay = new Date(sessionDate);
+  startTimeDisplay.setHours(hours, minutes, 0, 0);
+
+  const getStatusColor = (status: string) => {
+    if (status === 'completed') return 'bg-emerald-100 text-emerald-800';
+    if (status === 'cancelled') return 'bg-red-100 text-red-800';
+    return 'bg-blue-100 text-blue-800'; // booked
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-medium text-gray-900">Session Details</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Trainee */}
+          <div>
+            <span className="text-sm font-medium text-gray-500">Trainee:</span>
+            <p className="text-gray-900 mt-1">
+              {trainee ? `${trainee.firstName} ${trainee.lastName}` : 'Unknown trainee'}
+            </p>
+          </div>
+
+          {/* Session Type */}
+          <div>
+            <span className="text-sm font-medium text-gray-500">Session Type:</span>
+            <p className="text-gray-900 mt-1 capitalize">
+              {session.sessionType?.replace('_', ' ') || 'Session'}
+            </p>
+          </div>
+
+          {/* Date & Time */}
+          <div>
+            <span className="text-sm font-medium text-gray-500">Date & Time:</span>
+            <p className="text-gray-900 mt-1">
+              {sessionDate.toLocaleDateString()} at {startTimeDisplay.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+              })}
+            </p>
+          </div>
+
+          {/* Duration */}
+          <div>
+            <span className="text-sm font-medium text-gray-500">Duration:</span>
+            <p className="text-gray-900 mt-1">{session.duration} minutes</p>
+          </div>
+
+          {/* Location */}
+          {session.location && (
+            <div>
+              <span className="text-sm font-medium text-gray-500">Location:</span>
+              <p className="text-gray-900 mt-1">{session.location}</p>
+            </div>
+          )}
+
+          {/* Status */}
+          <div>
+            <span className="text-sm font-medium text-gray-500">Status:</span>
+            <div className="mt-1">
+              <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(session.status)}`}>
+                {session.status?.replace('_', ' ') || 'scheduled'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end space-x-3 mt-6">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );

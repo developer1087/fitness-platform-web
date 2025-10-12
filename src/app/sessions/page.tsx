@@ -230,7 +230,11 @@ export default function SessionsPage() {
               // Try to find trainee by document ID first, then by userId field
               const trainee = trainees.find(t => t.id === session.traineeId || (t as any).userId === session.traineeId);
               const sessionDate = new Date(session.scheduledDate);
-              const startTime = new Date(session.startTime);
+
+              // Parse startTime correctly (it's in HH:MM format)
+              const [hours, minutes] = (session.startTime || '00:00').split(':').map(Number);
+              const startTimeDisplay = new Date(sessionDate);
+              startTimeDisplay.setHours(hours, minutes, 0, 0);
 
               return (
                 <div key={session.id} className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow">
@@ -250,7 +254,7 @@ export default function SessionsPage() {
                         <div>
                           <span className="font-medium text-gray-500">Date & Time:</span>
                           <p className="text-gray-900">
-                            {sessionDate.toLocaleDateString()} at {startTime.toLocaleTimeString('en-US', {
+                            {sessionDate.toLocaleDateString()} at {startTimeDisplay.toLocaleTimeString('en-US', {
                               hour: 'numeric',
                               minute: '2-digit',
                               hour12: true
