@@ -61,11 +61,6 @@ export default function SessionsPage() {
 
     try {
       const traineeData = await TraineeService.getTraineesByTrainer(user.uid);
-      console.log('[DEBUG] All trainees with userId:', traineeData.map(t => ({
-        id: t.id,
-        userId: (t as any).userId,
-        name: `${t.firstName} ${t.lastName}`
-      })));
       setTrainees(traineeData.filter(t => t.status === 'active'));
     } catch (err) {
       console.error('Error loading trainees:', err);
@@ -232,11 +227,8 @@ export default function SessionsPage() {
         ) : (
           <div className="space-y-4">
             {sessions.map((session) => {
-              console.log('[DEBUG] Session traineeId:', session.traineeId);
-              console.log('[DEBUG] Available trainee IDs:', trainees.map(t => t.id));
               // Try to find trainee by document ID first, then by userId field
               const trainee = trainees.find(t => t.id === session.traineeId || (t as any).userId === session.traineeId);
-              console.log('[DEBUG] Found trainee:', trainee ? `${trainee.firstName} ${trainee.lastName}` : 'NOT FOUND');
               const sessionDate = new Date(session.scheduledDate);
               const startTime = new Date(session.startTime);
 
