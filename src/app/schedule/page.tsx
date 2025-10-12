@@ -54,15 +54,46 @@ export default function SchedulePage() {
         endDate.setDate(startDate.getDate());
       }
 
-      const [bookingsData, availabilityData, traineesData] = await Promise.all([
-        ScheduleService.getTrainerBookings(
-          user!.uid,
-          startDate.toISOString().split('T')[0],
-          endDate.toISOString().split('T')[0]
-        ),
-        ScheduleService.getTrainerAvailability(user!.uid),
-        TraineeService.getTraineesByTrainer(user!.uid)
+      // Load actual sessions and trainees (not booking_slots)
+      const [traineesData, availabilityData] = await Promise.all([
+        TraineeService.getTraineesByTrainer(user!.uid),
+        ScheduleService.getTrainerAvailability(user!.uid)
       ]);
+
+      // Load sessions for the date range
+      const { SessionService } = await import('../../lib/sessionService');
+      const sessionsData = await SessionService.getTrainerSessions(user!.uid, {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
+      });
+
+      // Convert sessions to booking slots format for calendar display
+      const bookingsData: BookingSlot[] = sessionsData.map(session => {
+        // Calculate end time from start time + duration
+        const [hours, minutes] = session.startTime.split(':').map(Number);
+        const startMinutes = hours * 60 + minutes;
+        const endMinutes = startMinutes + session.duration;
+        const endHours = Math.floor(endMinutes / 60);
+        const endMins = endMinutes % 60;
+        const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
+
+        return {
+          id: session.id,
+          trainerId: session.trainerId,
+          traineeId: session.traineeId,
+          date: session.scheduledDate,
+          startTime: session.startTime,
+          endTime: endTime,
+          duration: session.duration,
+          status: session.status === 'scheduled' || session.status === 'in_progress' ? 'booked' : session.status as any,
+          sessionType: session.type,
+          isRecurring: false,
+          location: session.location,
+          isRemote: false,
+          createdAt: session.createdAt,
+          updatedAt: session.updatedAt
+        };
+      });
 
       setBookings(bookingsData);
       setAvailability(availabilityData);
@@ -82,13 +113,28 @@ export default function SchedulePage() {
 
   const handleCreateBooking = async (bookingData: BookSlotFormData) => {
     try {
-      await ScheduleService.bookTimeSlot(user!.uid, bookingData);
+      // Convert booking data to session format
+      const { SessionService } = await import('../../lib/sessionService');
+      const sessionData = {
+        traineeId: bookingData.traineeId,
+        title: `${bookingData.sessionType.replace('_', ' ')} Session`,
+        description: bookingData.notes || '',
+        type: bookingData.sessionType as any,
+        scheduledDate: bookingData.date,
+        startTime: bookingData.startTime,
+        duration: bookingData.duration,
+        location: bookingData.location || 'Studio',
+        sessionRate: 0,
+        trainerNotes: ''
+      };
+
+      await SessionService.createSession(user!.uid, sessionData);
       setShowCreateBookingModal(false);
       setSelectedTimeSlot(null);
       loadData();
     } catch (error) {
-      console.error('Error creating booking:', error);
-      setError('Failed to create booking');
+      console.error('Error creating session:', error);
+      setError('Failed to create session');
     }
   };
 
@@ -294,6 +340,7 @@ export default function SchedulePage() {
             isSlotBooked={isSlotBooked}
             isSlotAvailable={isSlotAvailable}
             getBookingForSlot={getBookingForSlot}
+            trainees={trainees}
           />
         ) : (
           <div className="text-center py-12">
@@ -336,7 +383,8 @@ function WeekView({
   onTimeSlotClick,
   isSlotBooked,
   isSlotAvailable,
-  getBookingForSlot
+  getBookingForSlot,
+  trainees
 }: any) {
   return (
     <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
@@ -389,11 +437,19 @@ function WeekView({
                       : 'bg-gray-50 hover:bg-gray-100'
                   }`}
                 >
-                  {isBooked && booking && (
-                    <div className="absolute inset-1 bg-blue-600 text-white text-xs rounded p-1 flex items-center justify-center">
-                      <span className="truncate">{booking.sessionType}</span>
-                    </div>
-                  )}
+                  {isBooked && booking && (() => {
+                    // Find trainee by document ID or userId
+                    const trainee = trainees.find((t: any) => t.id === booking.traineeId || t.userId === booking.traineeId);
+                    const displayName = trainee ? `${trainee.firstName} ${trainee.lastName}` : 'Session';
+
+                    return (
+                      <div className="absolute inset-1 bg-blue-600 text-white text-xs rounded p-1 flex items-center justify-center">
+                        <span className="truncate" title={`${displayName} - ${booking.sessionType}`}>
+                          {displayName}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   {isAvailable && !isBooked && (
                     <div className="absolute inset-1 border-2 border-dashed border-green-300 rounded"></div>
                   )}
