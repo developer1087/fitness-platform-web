@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import TrainerLayout from '../components/TrainerLayout';
 import { TraineeService } from '../lib/traineeService';
+import { SessionService } from '../lib/sessionService';
 
 // Dashboard data interfaces
 interface DashboardStats {
@@ -60,8 +61,12 @@ export default function HomePage() {
       if (!user?.uid) return;
 
       try {
-        // Load trainees from Firestore
-        const trainees = await TraineeService.getTraineesByTrainer(user.uid);
+        // Load trainees and sessions in parallel from Firestore
+        const [trainees, todaySessions, allSessions] = await Promise.all([
+          TraineeService.getTraineesByTrainer(user.uid),
+          SessionService.getTodaySessions(user.uid),
+          SessionService.getTrainerSessions(user.uid)
+        ]);
 
         // Calculate stats from real data
         const now = new Date();
@@ -74,14 +79,20 @@ export default function HomePage() {
           return joinDate.getMonth() === currentMonth && joinDate.getFullYear() === currentYear;
         }).length;
 
+        // Count sessions this month
+        const sessionsThisMonth = allSessions.filter(session => {
+          const sessionDate = new Date(session.scheduledDate);
+          return sessionDate.getMonth() === currentMonth && sessionDate.getFullYear() === currentYear;
+        }).length;
+
         // Set stats based on real data
         setStats({
           newTrainees: newTraineesThisMonth,
-          sessionsThisMonth: 0, // TODO: Implement sessions collection
+          sessionsThisMonth,
           revenueThisMonth: 0, // TODO: Implement payments collection
           totalTrainees: trainees.length,
           pendingPayments: 0, // TODO: Implement payments collection
-          todaySessions: 0 // TODO: Implement sessions collection
+          todaySessions: todaySessions.length
         });
 
         // Create recent activity from trainees
