@@ -56,7 +56,7 @@ export interface BookingSlot {
   duration: number; // minutes
 
   // Booking details
-  status: 'available' | 'booked' | 'blocked' | 'cancelled';
+  status: 'available' | 'booked' | 'blocked' | 'cancelled' | 'completed';
   sessionType: string;
   sessionId?: string; // Reference to TrainingSession if booked
 
