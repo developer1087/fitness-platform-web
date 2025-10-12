@@ -227,7 +227,10 @@ export default function SessionsPage() {
         ) : (
           <div className="space-y-4">
             {sessions.map((session) => {
+              console.log('[DEBUG] Session traineeId:', session.traineeId);
+              console.log('[DEBUG] Available trainee IDs:', trainees.map(t => t.id));
               const trainee = trainees.find(t => t.id === session.traineeId);
+              console.log('[DEBUG] Found trainee:', trainee ? `${trainee.firstName} ${trainee.lastName}` : 'NOT FOUND');
               const sessionDate = new Date(session.scheduledDate);
               const startTime = new Date(session.startTime);
 
