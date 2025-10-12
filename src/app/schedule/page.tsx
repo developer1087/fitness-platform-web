@@ -68,32 +68,38 @@ export default function SchedulePage() {
       });
 
       // Convert sessions to booking slots format for calendar display
-      const bookingsData: BookingSlot[] = sessionsData.map(session => {
-        // Calculate end time from start time + duration
-        const [hours, minutes] = session.startTime.split(':').map(Number);
-        const startMinutes = hours * 60 + minutes;
-        const endMinutes = startMinutes + session.duration;
-        const endHours = Math.floor(endMinutes / 60);
-        const endMins = endMinutes % 60;
-        const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
+      // Filter out incomplete sessions and map to BookingSlot format
+      const bookingsData: BookingSlot[] = sessionsData
+        .filter(session => {
+          // Only include sessions with required fields
+          return session.startTime && session.scheduledDate && session.duration;
+        })
+        .map(session => {
+          // Calculate end time from start time + duration
+          const [hours, minutes] = session.startTime.split(':').map(Number);
+          const startMinutes = hours * 60 + minutes;
+          const endMinutes = startMinutes + session.duration;
+          const endHours = Math.floor(endMinutes / 60);
+          const endMins = endMinutes % 60;
+          const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
 
-        return {
-          id: session.id,
-          trainerId: session.trainerId,
-          traineeId: session.traineeId,
-          date: session.scheduledDate,
-          startTime: session.startTime,
-          endTime: endTime,
-          duration: session.duration,
-          status: session.status === 'scheduled' || session.status === 'in_progress' ? 'booked' : session.status as any,
-          sessionType: session.type,
-          isRecurring: false,
-          location: session.location,
-          isRemote: false,
-          createdAt: session.createdAt,
-          updatedAt: session.updatedAt
-        };
-      });
+          return {
+            id: session.id,
+            trainerId: session.trainerId,
+            traineeId: session.traineeId,
+            date: session.scheduledDate,
+            startTime: session.startTime,
+            endTime: endTime,
+            duration: session.duration,
+            status: session.status === 'scheduled' || session.status === 'in_progress' ? 'booked' : session.status as any,
+            sessionType: session.type,
+            isRecurring: false,
+            location: session.location || '',
+            isRemote: false,
+            createdAt: session.createdAt,
+            updatedAt: session.updatedAt
+          };
+        });
 
       setBookings(bookingsData);
       setAvailability(availabilityData);
