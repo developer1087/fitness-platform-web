@@ -27,7 +27,7 @@ import type {
 } from '../shared-types/trainer-sessions';
 
 // Collections
-const SESSIONS_COLLECTION = 'training_sessions';
+const SESSIONS_COLLECTION = 'sessions';  // Changed from 'training_sessions' to match mobile app
 const SESSION_TEMPLATES_COLLECTION = 'session_templates';
 const PERSONAL_RECORDS_COLLECTION = 'personal_records';
 // const SESSION_STATS_COLLECTION = 'session_stats';

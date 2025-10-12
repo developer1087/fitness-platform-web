@@ -175,6 +175,8 @@ export class TraineeService {
       if (!db) {
         throw new Error('Firebase Firestore not initialized');
       }
+      console.log('[TraineeService] Querying trainees for trainerId:', trainerId);
+
       const traineesQuery = query(
         collection(db, TRAINEES_COLLECTION),
         where('trainerId', '==', trainerId),
@@ -182,12 +184,24 @@ export class TraineeService {
       );
 
       const snapshot = await getDocs(traineesQuery);
+      console.log('[TraineeService] Query returned', snapshot.size, 'documents');
+
       const trainees: Trainee[] = [];
 
       snapshot.forEach((doc) => {
+        const data = doc.data();
+        console.log('[TraineeService] Trainee document:', {
+          id: doc.id,
+          trainerId: data.trainerId,
+          joinDate: data.joinDate,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          status: data.status
+        });
         trainees.push({ id: doc.id, ...doc.data() } as Trainee);
       });
 
+      console.log('[TraineeService] Returning', trainees.length, 'trainees');
       return trainees;
     } catch (error) {
       console.error('Error getting trainees:', error);

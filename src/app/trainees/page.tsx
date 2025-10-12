@@ -97,7 +97,16 @@ export default function TraineesPage() {
     setLoading(true);
     setError(null);
     try {
+      console.log('[DEBUG] Loading trainees for trainer:', user.uid);
       const traineesList = await TraineeService.getTraineesByTrainer(user.uid);
+      console.log('[DEBUG] Loaded trainees:', traineesList.length, 'trainees');
+      console.log('[DEBUG] Trainee details:', traineesList.map(t => ({
+        id: t.id,
+        name: `${t.firstName} ${t.lastName}`,
+        trainerId: t.trainerId,
+        joinDate: t.joinDate,
+        status: t.status
+      })));
       setTrainees(traineesList);
     } catch (err) {
       console.error('Error loading trainees:', err);

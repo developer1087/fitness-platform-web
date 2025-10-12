@@ -28,16 +28,17 @@ export class SMSService {
         ? phoneNumber
         : `+972${phoneNumber.substring(1)}`;
 
-      // Create deep link for mobile app
-      const deepLink = `${appUrl}?token=${invitationToken}&phone=${phoneNumber}`;
+      // Create deep link for mobile app phone auth screen
+      // Format: ryzup://phone-auth?token=XXX
+      const deepLink = `ryzup://phone-auth?token=${invitationToken}`;
 
       // SMS message text
       const message = `Hi ${traineeFirstName}! ${trainerName} invited you to Ryzup Fitness. Download the app and tap this link to join: ${deepLink}`;
 
-      // Development mode: Log to console
-      if (process.env.NODE_ENV !== 'production' || !process.env.SMS_PROVIDER) {
+      // Development mode: Log to console (only when no SMS provider is configured)
+      if (!process.env.SMS_PROVIDER) {
         console.log('='.repeat(60));
-        console.log('📱 SMS INVITATION (DEVELOPMENT MODE)');
+        console.log('📱 SMS INVITATION (DEVELOPMENT MODE - NO PROVIDER)');
         console.log('='.repeat(60));
         console.log('To:', formattedPhone);
         console.log('Message:', message);
@@ -50,7 +51,8 @@ export class SMSService {
       }
 
       // Production mode: Use configured SMS provider
-      const provider = process.env.SMS_PROVIDER;
+      // Trim to remove any trailing whitespace/newlines from env vars
+      const provider = process.env.SMS_PROVIDER.trim();
 
       switch (provider) {
         case 'twilio':
@@ -85,9 +87,9 @@ export class SMSService {
    */
   private static async sendViaTwilio(to: string, message: string): Promise<boolean> {
     try {
-      const accountSid = process.env.TWILIO_ACCOUNT_SID;
-      const authToken = process.env.TWILIO_AUTH_TOKEN;
-      const fromPhone = process.env.TWILIO_PHONE_NUMBER;
+      const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+      const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+      const fromPhone = process.env.TWILIO_PHONE_NUMBER?.trim();
 
       if (!accountSid || !authToken || !fromPhone) {
         console.error('Missing Twilio credentials');
@@ -132,55 +134,70 @@ export class SMSService {
    */
   private static async sendViaVonage(to: string, message: string): Promise<boolean> {
     try {
-      const apiKey = process.env.VONAGE_API_KEY;
-      const apiSecret = process.env.VONAGE_API_SECRET;
-      const from = process.env.VONAGE_FROM || 'Ryzup';
+      const apiKey = process.env.VONAGE_API_KEY?.trim();
+      const apiSecret = process.env.VONAGE_API_SECRET?.trim();
+      const from = (process.env.VONAGE_FROM || 'Ryzup').trim();
+
+      console.log('[Vonage] Checking credentials:', {
+        hasApiKey: !!apiKey,
+        hasApiSecret: !!apiSecret,
+        from,
+        to
+      });
 
       if (!apiKey || !apiSecret) {
-        console.error('Missing Vonage credentials');
+        console.error('[Vonage] Missing credentials - apiKey:', !!apiKey, 'apiSecret:', !!apiSecret);
         return false;
       }
 
       // Vonage SMS API
       const url = 'https://rest.nexmo.com/sms/json';
 
+      const payload = {
+        api_key: apiKey,
+        api_secret: apiSecret,
+        to: to.replace('+', ''), // Vonage wants number without + prefix
+        from: from,
+        text: message,
+      };
+
+      console.log('[Vonage] Sending request to:', url, 'with to:', payload.to, 'from:', payload.from);
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          api_key: apiKey,
-          api_secret: apiSecret,
-          to: to.replace('+', ''), // Vonage wants number without + prefix
-          from: from,
-          text: message,
-        }),
+        body: JSON.stringify(payload),
       });
+
+      console.log('[Vonage] Response status:', response.status, response.statusText);
 
       if (!response.ok) {
         const error = await response.text();
-        console.error('Vonage error:', error);
+        console.error('[Vonage] HTTP error response:', error);
         return false;
       }
 
       const data = await response.json();
+      console.log('[Vonage] Response data:', JSON.stringify(data, null, 2));
 
       // Vonage returns array of message objects
       if (data.messages && data.messages[0]) {
         const msg = data.messages[0];
         if (msg.status === '0') {
-          console.log('SMS sent via Vonage:', msg['message-id']);
+          console.log('[Vonage] ✅ SMS sent successfully! Message ID:', msg['message-id']);
           return true;
         } else {
-          console.error('Vonage SMS failed:', msg['error-text']);
+          console.error('[Vonage] ❌ SMS failed with status:', msg.status, 'error:', msg['error-text']);
           return false;
         }
       }
 
+      console.error('[Vonage] Unexpected response format:', data);
       return false;
     } catch (error) {
-      console.error('Vonage send error:', error);
+      console.error('[Vonage] Exception occurred:', error);
       return false;
     }
   }
