@@ -240,7 +240,7 @@ export default function SessionsPage() {
                         <div>
                           <h3 className="text-lg font-semibold text-gray-900">{session.title}</h3>
                           <p className="text-sm text-gray-600">
-                            {trainee ? `${trainee.firstName} ${trainee.lastName}` : 'Unknown trainee'} • {session.type.replace('_', ' ')}
+                            {trainee ? `${trainee.firstName} ${trainee.lastName}` : 'Unknown trainee'} • {session.type ? session.type.replace('_', ' ') : 'Session'}
                           </p>
                         </div>
                       </div>
@@ -275,8 +275,8 @@ export default function SessionsPage() {
                     </div>
 
                     <div className="flex flex-col items-end space-y-3">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(session.status)}`}>
-                        {session.status.replace('_', ' ')}
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(session.status || 'scheduled')}`}>
+                        {session.status ? session.status.replace('_', ' ') : 'scheduled'}
                       </span>
 
                       <div className="flex space-x-2">

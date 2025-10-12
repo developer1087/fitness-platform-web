@@ -282,8 +282,8 @@ export default function TraineesPage() {
                         <h3 className="text-lg font-semibold text-gray-900">
                           {trainee.firstName} {trainee.lastName}
                         </h3>
-                        <p className="text-sm text-gray-600">{trainee.phoneNumber}</p>
-                        {trainee.email && (
+                        <p className="text-sm text-gray-600">{trainee.phoneNumber || trainee.email || 'No contact info'}</p>
+                        {trainee.email && trainee.phoneNumber && (
                           <p className="text-xs text-gray-500">{trainee.email}</p>
                         )}
                       </div>
@@ -299,14 +299,14 @@ export default function TraineesPage() {
 
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-600">Level:</span>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getFitnessLevelBadge(trainee.fitnessLevel)}`}>
-                          {trainee.fitnessLevel}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getFitnessLevelBadge(trainee.fitnessLevel || 'beginner')}`}>
+                          {trainee.fitnessLevel || 'beginner'}
                         </span>
                       </div>
 
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-600">Sessions:</span>
-                        <span className="text-sm font-medium text-gray-900">{trainee.totalSessions}</span>
+                        <span className="text-sm font-medium text-gray-900">{trainee.totalSessions || 0}</span>
                       </div>
 
                       <div className="flex justify-between items-center">
@@ -319,11 +319,15 @@ export default function TraineesPage() {
                       <div>
                         <span className="text-sm text-gray-600">Goals:</span>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {trainee.goals.map((goal, index) => (
-                            <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                              {goal}
-                            </span>
-                          ))}
+                          {trainee.goals && trainee.goals.length > 0 ? (
+                            trainee.goals.map((goal, index) => (
+                              <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                                {goal}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-gray-400">No goals set</span>
+                          )}
                         </div>
                       </div>
                     </div>
