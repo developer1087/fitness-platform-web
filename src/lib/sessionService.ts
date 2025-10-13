@@ -62,10 +62,11 @@ export class SessionService {
       }
 
       // VALIDATION: Check if time slot falls within trainer's availability
+      // Get slots without session type filter first
       const availableSlots = await ScheduleService.getAvailableSlots(
         trainerId,
-        sessionData.scheduledDate,
-        sessionData.type
+        sessionData.scheduledDate
+        // Don't pass sessionType to avoid over-filtering
       );
 
       console.log('🔍 Availability Check Debug:', {
@@ -77,37 +78,30 @@ export class SessionService {
         firstFewSlots: availableSlots.slice(0, 5).map(s => `${s.start}-${s.end}`)
       });
 
-      const sessionEndTime = this.calculateEndTime(sessionData.startTime, sessionData.duration);
+      // Only validate if we have availability defined
+      if (availableSlots.length > 0) {
+        const sessionEndTime = this.calculateEndTime(sessionData.startTime, sessionData.duration);
 
-      // Check if the entire session duration fits within available slots
-      // Session must start within an available slot AND end within available slots
-      const hasStartSlot = availableSlots.some(slot =>
-        sessionData.startTime >= slot.start && sessionData.startTime < slot.end
-      );
-
-      const hasEndSlot = availableSlots.some(slot =>
-        sessionEndTime > slot.start && sessionEndTime <= slot.end
-      );
-
-      // Also check if all intermediate time is covered by availability
-      const isFullyCovered = this.isTimeRangeCovered(
-        sessionData.startTime,
-        sessionEndTime,
-        availableSlots
-      );
-
-      console.log('🔍 Validation Results:', {
-        sessionStart: sessionData.startTime,
-        sessionEnd: sessionEndTime,
-        hasStartSlot,
-        hasEndSlot,
-        isFullyCovered
-      });
-
-      if (!hasStartSlot || !hasEndSlot || !isFullyCovered) {
-        throw new Error(
-          `Selected time (${sessionData.startTime}) is not within your available hours. Please set your availability first or choose a different time.`
+        // Check if the entire session duration fits within available slots
+        const isFullyCovered = this.isTimeRangeCovered(
+          sessionData.startTime,
+          sessionEndTime,
+          availableSlots
         );
+
+        console.log('🔍 Validation Results:', {
+          sessionStart: sessionData.startTime,
+          sessionEnd: sessionEndTime,
+          isFullyCovered
+        });
+
+        if (!isFullyCovered) {
+          throw new Error(
+            `Selected time (${sessionData.startTime}) is not within your available hours. Please set your availability first or choose a different time.`
+          );
+        }
+      } else {
+        console.log('⚠️ No availability slots defined for this day - skipping availability validation');
       }
 
       const now = new Date().toISOString();
