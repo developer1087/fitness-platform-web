@@ -16,6 +16,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { ScheduleService } from './scheduleService';
 import type {
   TrainingSession,
   CreateSessionFormData,
@@ -44,6 +45,38 @@ export class SessionService {
     try {
       if (!db) {
         throw new Error('Firebase Firestore not initialized');
+      }
+
+      // VALIDATION: Check for scheduling conflicts
+      const conflicts = await ScheduleService.checkForConflicts(
+        trainerId,
+        sessionData.scheduledDate,
+        sessionData.startTime,
+        sessionData.duration
+      );
+
+      if (conflicts.length > 0) {
+        throw new Error(
+          `Time slot conflicts with existing booking at ${conflicts[0].startTime}. Please choose a different time.`
+        );
+      }
+
+      // VALIDATION: Check if time slot falls within trainer's availability
+      const availableSlots = await ScheduleService.getAvailableSlots(
+        trainerId,
+        sessionData.scheduledDate,
+        sessionData.type
+      );
+
+      const sessionEndTime = this.calculateEndTime(sessionData.startTime, sessionData.duration);
+      const isWithinAvailability = availableSlots.some(slot =>
+        slot.start <= sessionData.startTime && slot.end >= sessionEndTime
+      );
+
+      if (!isWithinAvailability) {
+        throw new Error(
+          `Selected time (${sessionData.startTime}) is not within your available hours. Please set your availability first or choose a different time.`
+        );
       }
 
       const now = new Date().toISOString();
@@ -87,11 +120,37 @@ export class SessionService {
       }
 
       const sessionRef = await addDoc(collection(db, SESSIONS_COLLECTION), session);
+
+      // LINK TO BOOKING SLOT: Mark the corresponding booking slot as booked
+      try {
+        await ScheduleService.bookTimeSlot(trainerId, {
+          traineeId: sessionData.traineeId,
+          sessionType: sessionData.type,
+          date: sessionData.scheduledDate,
+          startTime: sessionData.startTime,
+          duration: sessionData.duration,
+          location: sessionData.location,
+          isRemote: false, // Can be determined from location or session type
+          notes: sessionData.trainerNotes
+        });
+      } catch (bookingError) {
+        console.warn('Session created but failed to create booking slot:', bookingError);
+        // Don't fail the session creation if booking slot creation fails
+      }
+
       return sessionRef.id;
     } catch (error) {
       console.error('Error creating session:', error);
       throw error;
     }
+  }
+
+  // Helper to calculate end time
+  private static calculateEndTime(startTime: string, durationMinutes: number): string {
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours, minutes + durationMinutes);
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
   }
 
   // Get sessions for a trainer
