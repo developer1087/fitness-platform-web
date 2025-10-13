@@ -1,0 +1,466 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+import TrainerLayout from '../../components/TrainerLayout';
+import { PaymentService } from '../../lib/paymentService';
+import { TraineeService } from '../../lib/traineeService';
+import type {
+  Invoice,
+  Payment,
+  PaymentAccount,
+  Package,
+} from '../../shared-types/payment/types';
+import type { Trainee } from '../../shared-types';
+
+export default function PaymentsPage() {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'payments' | 'packages'>('overview');
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [account, setAccount] = useState<PaymentAccount | null>(null);
+  const [trainees, setTrainees] = useState<Trainee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Modal states
+  const [showCreatePackageModal, setShowCreatePackageModal] = useState(false);
+  const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user]);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [accountData, invoicesData, paymentsData, packagesData, traineesData] = await Promise.all([
+        PaymentService.getPaymentAccount(user!.uid),
+        PaymentService.getTrainerInvoices(user!.uid),
+        PaymentService.getTrainerPayments(user!.uid),
+        PaymentService.getTrainerPackages(user!.uid),
+        TraineeService.getTraineesByTrainer(user!.uid)
+      ]);
+
+      setAccount(accountData);
+      setInvoices(invoicesData);
+      setPayments(paymentsData);
+      setPackages(packagesData);
+      setTrainees(traineesData);
+    } catch (error) {
+      console.error('Error loading payment data:', error);
+      setError('Failed to load payment data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreatePackage = async (packageData: Omit<Package, 'id' | 'trainerId' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      await PaymentService.createPackage(user!.uid, packageData);
+      setShowCreatePackageModal(false);
+      loadData();
+    } catch (error) {
+      console.error('Error creating package:', error);
+      setError('Failed to create package');
+    }
+  };
+
+  const handleRecordPayment = async (paymentData: { amount: number; invoiceIds: string[]; paymentMethod: Payment['paymentMethod']; notes?: string }) => {
+    if (!selectedInvoice) return;
+    
+    try {
+      await PaymentService.recordPayment(
+        user!.uid,
+        selectedInvoice.traineeId,
+        paymentData
+      );
+      setShowRecordPaymentModal(false);
+      setSelectedInvoice(null);
+      loadData();
+    } catch (error) {
+      console.error('Error recording payment:', error);
+      setError('Failed to record payment');
+    }
+  };
+
+  // Calculate overview stats from current month
+  const now = new Date();
+  const thisMonthInvoices = invoices.filter(inv => {
+    const invDate = new Date(inv.billingDate);
+    return invDate.getMonth() === now.getMonth() && invDate.getFullYear() === now.getFullYear();
+  });
+
+  const totalRevenue = payments.filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0);
+  const thisMonthRevenue = payments
+    .filter(p => {
+      const pDate = new Date(p.createdAt);
+      return p.status === 'completed' && pDate.getMonth() === now.getMonth() && pDate.getFullYear() === now.getFullYear();
+    })
+    .reduce((sum, p) => sum + p.amount, 0);
+  const pendingAmount = invoices.filter(i => i.status === 'pending').reduce((sum, i) => sum + i.amount, 0);
+  const overdueAmount = invoices
+    .filter(i => i.status === 'pending' && new Date(i.dueDate) < now)
+    .reduce((sum, i) => sum + i.amount, 0);
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p className="mt-2 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <TrainerLayout currentPage="payments">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="px-6 py-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-gray-900">Payments & Billing</h2>
+            <button
+              onClick={() => setShowCreatePackageModal(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+            >
+              Create Package
+            </button>
+          </div>
+
+          {/* Tabs */}
+          <div className="mt-4">
+            <nav className="flex space-x-8">
+              {[
+                { key: 'overview', label: 'Overview' },
+                { key: 'invoices', label: 'Invoices' },
+                { key: 'payments', label: 'Payments' },
+                { key: 'packages', label: 'Packages (מנויים)' }
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key as any)}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm \${
+                    activeTab === tab.key
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-4 mx-6 mt-4">
+          <div className="flex">
+            <div className="ml-3">
+              <p className="text-sm text-red-700">{error}</p>
+              <button
+                onClick={() => setError(null)}
+                className="mt-2 text-sm text-red-600 hover:text-red-500"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="p-6">
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <svg className="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p className="mt-2 text-gray-600">Loading payment data...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="max-w-6xl mx-auto">
+            {activeTab === 'overview' && (
+              <OverviewTab
+                totalRevenue={totalRevenue}
+                thisMonthRevenue={thisMonthRevenue}
+                pendingAmount={pendingAmount}
+                overdueAmount={overdueAmount}
+                recentInvoices={invoices.slice(0, 5)}
+                recentPayments={payments.slice(0, 5)}
+                account={account}
+                activePackagesCount={packages.filter(p => p.isActive).length}
+              />
+            )}
+
+            {activeTab === 'invoices' && (
+              <InvoicesTab
+                invoices={invoices}
+                trainees={trainees}
+                onRecordPayment={(invoice: Invoice) => {
+                  setSelectedInvoice(invoice);
+                  setShowRecordPaymentModal(true);
+                }}
+              />
+            )}
+
+            {activeTab === 'payments' && (
+              <PaymentsTab payments={payments} trainees={trainees} />
+            )}
+
+            {activeTab === 'packages' && (
+              <PackagesTab 
+                packages={packages}
+                onCreatePackage={() => setShowCreatePackageModal(true)}
+                onToggleActive={async (packageId: string, isActive: boolean) => {
+                  try {
+                    await PaymentService.updatePackage(packageId, { isActive });
+                    loadData();
+                  } catch (error) {
+                    setError('Failed to update package');
+                  }
+                }}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Create Package Modal */}
+      {showCreatePackageModal && (
+        <CreatePackageModal
+          isOpen={showCreatePackageModal}
+          onClose={() => setShowCreatePackageModal(false)}
+          onSubmit={handleCreatePackage}
+        />
+      )}
+
+      {/* Record Payment Modal */}
+      {showRecordPaymentModal && selectedInvoice && (
+        <RecordPaymentModal
+          isOpen={showRecordPaymentModal}
+          invoice={selectedInvoice}
+          onClose={() => {
+            setShowRecordPaymentModal(false);
+            setSelectedInvoice(null);
+          }}
+          onSubmit={handleRecordPayment}
+        />
+      )}
+    </TrainerLayout>
+  );
+}
+
+// Overview Tab Component
+function OverviewTab({
+  totalRevenue,
+  thisMonthRevenue,
+  pendingAmount,
+  overdueAmount,
+  recentInvoices,
+  recentPayments,
+  account,
+  activePackagesCount
+}: any) {
+  return (
+    <div className="space-y-6">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                </svg>
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Total Revenue</p>
+              <p className="text-2xl font-semibold text-gray-900">₪{totalRevenue.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd" />
+                </svg>
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">This Month</p>
+              <p className="text-2xl font-semibold text-gray-900">₪{thisMonthRevenue.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                <svg className="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                </svg>
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Pending</p>
+              <p className="text-2xl font-semibold text-gray-900">₪{pendingAmount.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Overdue</p>
+              <p className="text-2xl font-semibold text-gray-900">₪{overdueAmount.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Active Packages Info */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-center">
+          <svg className="h-5 w-5 text-blue-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+            <path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1V5a1 1 0 00-1-1H3zM14 7a1 1 0 00-1 1v6.05A2.5 2.5 0 0115.95 16H17a1 1 0 001-1v-5a1 1 0 00-.293-.707l-2-2A1 1 0 0015 7h-1z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-blue-900">{activePackagesCount} Active Packages (מנויים)</p>
+            <p className="text-xs text-blue-700">Trainees can purchase these session packages</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Invoices */}
+        <div className="bg-white rounded-lg shadow-sm border">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900">Recent Invoices</h3>
+          </div>
+          <div className="p-6">
+            {recentInvoices.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">No invoices yet</p>
+            ) : (
+              <div className="space-y-3">
+                {recentInvoices.map((invoice: Invoice) => (
+                  <div key={invoice.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{invoice.type === 'package' ? 'Package Purchase' : 'Session'}</p>
+                      <p className="text-xs text-gray-500">{invoice.description}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-900">₪{invoice.amount.toLocaleString()}</p>
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full \${
+                        invoice.status === 'paid'
+                          ? 'bg-green-100 text-green-800'
+                          : invoice.status === 'pending'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : invoice.status === 'cancelled'
+                          ? 'bg-gray-100 text-gray-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {invoice.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Recent Payments */}
+        <div className="bg-white rounded-lg shadow-sm border">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900">Recent Payments</h3>
+          </div>
+          <div className="p-6">
+            {recentPayments.length === 0 ? (
+              <p className="text-gray-500 text-center py-4">No payments yet</p>
+            ) : (
+              <div className="space-y-3">
+                {recentPayments.map((payment: Payment) => (
+                  <div key={payment.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {payment.paymentMethod.replace('_', ' ')}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(payment.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-900">₪{payment.amount.toLocaleString()}</p>
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full \${
+                        payment.status === 'completed'
+                          ? 'bg-green-100 text-green-800'
+                          : payment.status === 'failed'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {payment.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Manual Payment Notice */}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-yellow-800">
+              Manual Payment Mode
+            </h3>
+            <div className="mt-2 text-sm text-yellow-700">
+              <p>
+                Payments are recorded manually. When you receive payment (cash, bank transfer, etc.), mark the invoice as paid in the system.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Continue in next message due to length...

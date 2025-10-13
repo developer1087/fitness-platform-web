@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import TrainerLayout from '../components/TrainerLayout';
 import { TraineeService } from '../lib/traineeService';
 import { SessionService } from '../lib/sessionService';
+import { PaymentService } from '../lib/paymentService';
 
 // Dashboard data interfaces
 interface DashboardStats {
@@ -61,37 +62,42 @@ export default function HomePage() {
       if (!user?.uid) return;
 
       try {
-        // Load trainees and sessions in parallel from Firestore
-        const [trainees, todaySessions, allSessions] = await Promise.all([
+        // Load trainees, sessions, and payment data in parallel from Firestore
+        const now = new Date();
+        const currentMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
+        const currentYear = now.getFullYear();
+
+        const [trainees, todaySessions, allSessions, paymentSummary] = await Promise.all([
           TraineeService.getTraineesByTrainer(user.uid),
           SessionService.getTodaySessions(user.uid),
-          SessionService.getTrainerSessions(user.uid)
+          SessionService.getTrainerSessions(user.uid),
+          PaymentService.getPaymentSummary(user.uid, currentYear, currentMonth)
         ]);
 
         // Calculate stats from real data
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
+        const nowForFilter = new Date();
+        const currentMonthForFilter = nowForFilter.getMonth();
+        const currentYearForFilter = nowForFilter.getFullYear();
 
         // Count new trainees this month
         const newTraineesThisMonth = trainees.filter(trainee => {
           const joinDate = new Date(trainee.joinDate);
-          return joinDate.getMonth() === currentMonth && joinDate.getFullYear() === currentYear;
+          return joinDate.getMonth() === currentMonthForFilter && joinDate.getFullYear() === currentYearForFilter;
         }).length;
 
         // Count sessions this month
         const sessionsThisMonth = allSessions.filter(session => {
           const sessionDate = new Date(session.scheduledDate);
-          return sessionDate.getMonth() === currentMonth && sessionDate.getFullYear() === currentYear;
+          return sessionDate.getMonth() === currentMonthForFilter && sessionDate.getFullYear() === currentYearForFilter;
         }).length;
 
         // Set stats based on real data
         setStats({
           newTrainees: newTraineesThisMonth,
           sessionsThisMonth,
-          revenueThisMonth: 0, // TODO: Implement payments collection
+          revenueThisMonth: paymentSummary.totalRevenue,
           totalTrainees: trainees.length,
-          pendingPayments: 0, // TODO: Implement payments collection
+          pendingPayments: paymentSummary.pendingPayments,
           todaySessions: todaySessions.length
         });
 
@@ -227,7 +233,7 @@ export default function HomePage() {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Revenue This Month</p>
-                <p className="text-2xl font-bold text-gray-900">${stats.revenueThisMonth.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-gray-900">₪{stats.revenueThisMonth.toLocaleString()}</p>
               </div>
             </div>
           </div>
@@ -268,7 +274,7 @@ export default function HomePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Pending Payments</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.pendingPayments}</p>
+                <p className="text-3xl font-bold text-gray-900">₪{stats.pendingPayments.toLocaleString()}</p>
                 <p className="text-sm text-gray-500 mt-1">Require follow-up</p>
               </div>
               <div className="p-3 bg-red-50 rounded-lg">

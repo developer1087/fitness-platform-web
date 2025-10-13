@@ -9,24 +9,24 @@ import type {
   Invoice,
   Payment,
   PaymentAccount,
-  FinancialReport,
-  CreateInvoiceFormData
-} from '../../shared-types/payments';
+  Package,
+} from '../../shared-types/payment/types';
 import type { Trainee } from '../../shared-types';
 
 export default function PaymentsPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'payments' | 'reports'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'invoices' | 'payments' | 'packages'>('overview');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [packages, setPackages] = useState<Package[]>([]);
   const [account, setAccount] = useState<PaymentAccount | null>(null);
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Modal states
-  const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
-  // const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCreatePackageModal, setShowCreatePackageModal] = useState(false);
+  const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
@@ -40,16 +40,18 @@ export default function PaymentsPage() {
       setLoading(true);
       setError(null);
 
-      const [accountData, invoicesData, paymentsData, traineesData] = await Promise.all([
+      const [accountData, invoicesData, paymentsData, packagesData, traineesData] = await Promise.all([
         PaymentService.getPaymentAccount(user!.uid),
-        PaymentService.getTrainerInvoices(user!.uid, { limit: 50 }),
+        PaymentService.getTrainerInvoices(user!.uid),
         PaymentService.getTrainerPayments(user!.uid),
+        PaymentService.getTrainerPackages(user!.uid),
         TraineeService.getTraineesByTrainer(user!.uid)
       ]);
 
       setAccount(accountData);
       setInvoices(invoicesData);
       setPayments(paymentsData);
+      setPackages(packagesData);
       setTrainees(traineesData);
     } catch (error) {
       console.error('Error loading payment data:', error);
@@ -59,36 +61,58 @@ export default function PaymentsPage() {
     }
   };
 
-  const handleCreateInvoice = async (invoiceData: CreateInvoiceFormData) => {
+  const handleCreatePackage = async (packageData: Omit<Package, 'id' | 'trainerId' | 'createdAt' | 'updatedAt'>) => {
     try {
-      await PaymentService.createInvoice(user!.uid, invoiceData);
-      setShowCreateInvoiceModal(false);
+      await PaymentService.createPackage(user!.uid, packageData);
+      setShowCreatePackageModal(false);
       loadData();
     } catch (error) {
-      console.error('Error creating invoice:', error);
-      setError('Failed to create invoice');
+      console.error('Error creating package:', error);
+      setError('Failed to create package');
     }
   };
 
-  const handleSendInvoice = async (invoiceId: string) => {
+  const handleTogglePackage = async (packageId: string, isActive: boolean) => {
     try {
-      await PaymentService.sendInvoice(invoiceId);
+      await PaymentService.updatePackage(packageId, { isActive });
       loadData();
     } catch (error) {
-      console.error('Error sending invoice:', error);
-      setError('Failed to send invoice');
+      console.error('Error updating package:', error);
+      setError('Failed to update package');
+    }
+  };
+
+  const handleRecordPayment = async (paymentData: { amount: number; invoiceIds: string[]; paymentMethod: Payment['paymentMethod']; notes?: string }) => {
+    if (!selectedInvoice) return;
+
+    try {
+      await PaymentService.recordPayment(
+        user!.uid,
+        selectedInvoice.traineeId,
+        paymentData
+      );
+      setShowRecordPaymentModal(false);
+      setSelectedInvoice(null);
+      loadData();
+    } catch (error) {
+      console.error('Error recording payment:', error);
+      setError('Failed to record payment');
     }
   };
 
   // Calculate overview stats
-  const totalRevenue = payments.filter(p => p.status === 'succeeded').reduce((sum, p) => sum + p.amount, 0);
+  const now = new Date();
+  const totalRevenue = payments.filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0);
   const thisMonthRevenue = payments
-    .filter(p => p.status === 'succeeded' && new Date(p.createdAt).getMonth() === new Date().getMonth())
+    .filter(p => {
+      const pDate = new Date(p.createdAt);
+      return p.status === 'completed' && pDate.getMonth() === now.getMonth() && pDate.getFullYear() === now.getFullYear();
+    })
     .reduce((sum, p) => sum + p.amount, 0);
-  const pendingAmount = invoices.filter(i => i.paymentStatus === 'unpaid').reduce((sum, i) => sum + i.totalAmount, 0);
+  const pendingAmount = invoices.filter(i => i.status === 'pending').reduce((sum, i) => sum + i.amount, 0);
   const overdueAmount = invoices
-    .filter(i => i.paymentStatus === 'unpaid' && new Date(i.dueDate) < new Date())
-    .reduce((sum, i) => sum + i.totalAmount, 0);
+    .filter(i => i.status === 'pending' && new Date(i.dueDate) < now)
+    .reduce((sum, i) => sum + i.amount, 0);
 
   if (!user) {
     return (
@@ -112,10 +136,10 @@ export default function PaymentsPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-gray-900">Payments & Billing</h2>
             <button
-              onClick={() => setShowCreateInvoiceModal(true)}
+              onClick={() => setShowCreatePackageModal(true)}
               className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
             >
-              Create Invoice
+              Create Package
             </button>
           </div>
 
@@ -126,7 +150,7 @@ export default function PaymentsPage() {
                 { key: 'overview', label: 'Overview' },
                 { key: 'invoices', label: 'Invoices' },
                 { key: 'payments', label: 'Payments' },
-                { key: 'reports', label: 'Reports' }
+                { key: 'packages', label: 'Packages (מנויים)' }
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -185,35 +209,54 @@ export default function PaymentsPage() {
                 recentInvoices={invoices.slice(0, 5)}
                 recentPayments={payments.slice(0, 5)}
                 account={account}
+                activePackagesCount={packages.filter(p => p.isActive).length}
               />
             )}
 
             {activeTab === 'invoices' && (
               <InvoicesTab
                 invoices={invoices}
-                onSendInvoice={handleSendInvoice}
-                onViewInvoice={(invoice: Invoice) => setSelectedInvoice(invoice)}
+                trainees={trainees}
+                onRecordPayment={(invoice: Invoice) => {
+                  setSelectedInvoice(invoice);
+                  setShowRecordPaymentModal(true);
+                }}
               />
             )}
 
             {activeTab === 'payments' && (
-              <PaymentsTab payments={payments} />
+              <PaymentsTab payments={payments} trainees={trainees} />
             )}
 
-            {activeTab === 'reports' && (
-              <ReportsTab trainerId={user.uid} />
+            {activeTab === 'packages' && (
+              <PackagesTab
+                packages={packages}
+                onToggleActive={handleTogglePackage}
+              />
             )}
           </div>
         )}
       </div>
 
-      {/* Create Invoice Modal */}
-      {showCreateInvoiceModal && (
-        <CreateInvoiceModal
-          isOpen={showCreateInvoiceModal}
-          onClose={() => setShowCreateInvoiceModal(false)}
-          onSubmit={handleCreateInvoice}
-          trainees={trainees}
+      {/* Create Package Modal */}
+      {showCreatePackageModal && (
+        <CreatePackageModal
+          isOpen={showCreatePackageModal}
+          onClose={() => setShowCreatePackageModal(false)}
+          onSubmit={handleCreatePackage}
+        />
+      )}
+
+      {/* Record Payment Modal */}
+      {showRecordPaymentModal && selectedInvoice && (
+        <RecordPaymentModal
+          isOpen={showRecordPaymentModal}
+          invoice={selectedInvoice}
+          onClose={() => {
+            setShowRecordPaymentModal(false);
+            setSelectedInvoice(null);
+          }}
+          onSubmit={handleRecordPayment}
         />
       )}
     </TrainerLayout>
@@ -228,7 +271,8 @@ function OverviewTab({
   overdueAmount,
   recentInvoices,
   recentPayments,
-  account
+  account,
+  activePackagesCount
 }: any) {
   return (
     <div className="space-y-6">
@@ -245,7 +289,7 @@ function OverviewTab({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Total Revenue</p>
-              <p className="text-2xl font-semibold text-gray-900">${totalRevenue.toFixed(2)}</p>
+              <p className="text-2xl font-semibold text-gray-900">₪{totalRevenue.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -261,7 +305,7 @@ function OverviewTab({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">This Month</p>
-              <p className="text-2xl font-semibold text-gray-900">${thisMonthRevenue.toFixed(2)}</p>
+              <p className="text-2xl font-semibold text-gray-900">₪{thisMonthRevenue.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -277,7 +321,7 @@ function OverviewTab({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Pending</p>
-              <p className="text-2xl font-semibold text-gray-900">${pendingAmount.toFixed(2)}</p>
+              <p className="text-2xl font-semibold text-gray-900">₪{pendingAmount.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -293,7 +337,42 @@ function OverviewTab({
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Overdue</p>
-              <p className="text-2xl font-semibold text-gray-900">${overdueAmount.toFixed(2)}</p>
+              <p className="text-2xl font-semibold text-gray-900">₪{overdueAmount.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Active Packages Info */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-center">
+          <svg className="h-5 w-5 text-blue-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+            <path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1V5a1 1 0 00-1-1H3zM14 7a1 1 0 00-1 1v6.05A2.5 2.5 0 0115.95 16H17a1 1 0 001-1v-5a1 1 0 00-.293-.707l-2-2A1 1 0 0015 7h-1z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-blue-900">{activePackagesCount} Active Packages (מנויים)</p>
+            <p className="text-xs text-blue-700">Trainees can purchase these session packages</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Manual Payment Notice */}
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-yellow-800">
+              Manual Payment Mode
+            </h3>
+            <div className="mt-2 text-sm text-yellow-700">
+              <p>
+                Payments are recorded manually. When you receive payment (cash, bank transfer, etc.), mark the invoice as paid.
+              </p>
             </div>
           </div>
         </div>
@@ -314,19 +393,21 @@ function OverviewTab({
                 {recentInvoices.map((invoice: Invoice) => (
                   <div key={invoice.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{invoice.invoiceNumber}</p>
-                      <p className="text-xs text-gray-500">{invoice.title}</p>
+                      <p className="text-sm font-medium text-gray-900">{invoice.type === 'package' ? 'Package Purchase' : 'Session'}</p>
+                      <p className="text-xs text-gray-500">{invoice.description}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">${invoice.totalAmount.toFixed(2)}</p>
+                      <p className="text-sm font-medium text-gray-900">₪{invoice.amount.toLocaleString()}</p>
                       <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        invoice.paymentStatus === 'paid'
+                        invoice.status === 'paid'
                           ? 'bg-green-100 text-green-800'
-                          : invoice.paymentStatus === 'unpaid'
+                          : invoice.status === 'pending'
                           ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-gray-100 text-gray-800'
+                          : invoice.status === 'cancelled'
+                          ? 'bg-gray-100 text-gray-800'
+                          : 'bg-red-100 text-red-800'
                       }`}>
-                        {invoice.paymentStatus}
+                        {invoice.status}
                       </span>
                     </div>
                   </div>
@@ -350,16 +431,16 @@ function OverviewTab({
                   <div key={payment.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
                       <p className="text-sm font-medium text-gray-900">
-                        Payment #{payment.id.slice(-6)}
+                        {payment.paymentMethod.replace('_', ' ')}
                       </p>
                       <p className="text-xs text-gray-500">
                         {new Date(payment.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">${payment.amount.toFixed(2)}</p>
+                      <p className="text-sm font-medium text-gray-900">₪{payment.amount.toLocaleString()}</p>
                       <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        payment.status === 'succeeded'
+                        payment.status === 'completed'
                           ? 'bg-green-100 text-green-800'
                           : payment.status === 'failed'
                           ? 'bg-red-100 text-red-800'
@@ -375,35 +456,17 @@ function OverviewTab({
           </div>
         </div>
       </div>
-
-      {/* Account Status */}
-      {!account && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-yellow-800">
-                Payment Account Setup Required
-              </h3>
-              <div className="mt-2 text-sm text-yellow-700">
-                <p>
-                  Set up your payment account to start accepting payments and managing invoices.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 // Invoices Tab Component
-function InvoicesTab({ invoices, onSendInvoice, onViewInvoice }: any) {
+function InvoicesTab({ invoices, trainees, onRecordPayment }: any) {
+  const getTraineeName = (traineeId: string) => {
+    const trainee = trainees.find((t: any) => t.id === traineeId);
+    return trainee ? `${trainee.firstName} ${trainee.lastName}` : traineeId;
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-sm border">
       <div className="px-6 py-4 border-b border-gray-200">
@@ -414,10 +477,13 @@ function InvoicesTab({ invoices, onSendInvoice, onViewInvoice }: any) {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Invoice
+                Type
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Client
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Description
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Amount
@@ -434,54 +500,58 @@ function InvoicesTab({ invoices, onSendInvoice, onViewInvoice }: any) {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {invoices.map((invoice: Invoice) => (
-              <tr key={invoice.id}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{invoice.invoiceNumber}</div>
-                    <div className="text-sm text-gray-500">{invoice.title}</div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {invoice.traineeId}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  ${invoice.totalAmount.toFixed(2)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    invoice.paymentStatus === 'paid'
-                      ? 'bg-green-100 text-green-800'
-                      : invoice.paymentStatus === 'unpaid'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {invoice.paymentStatus}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {new Date(invoice.dueDate).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => onViewInvoice(invoice)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      View
-                    </button>
-                    {invoice.status === 'draft' && (
-                      <button
-                        onClick={() => onSendInvoice(invoice.id)}
-                        className="text-green-600 hover:text-green-900"
-                      >
-                        Send
-                      </button>
-                    )}
-                  </div>
+            {invoices.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                  No invoices yet
                 </td>
               </tr>
-            ))}
+            ) : (
+              invoices.map((invoice: Invoice) => (
+                <tr key={invoice.id}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="text-sm font-medium text-gray-900">
+                      {invoice.type === 'package' ? 'Package' : 'Session'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {getTraineeName(invoice.traineeId)}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-gray-900">{invoice.description}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ₪{invoice.amount.toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      invoice.status === 'paid'
+                        ? 'bg-green-100 text-green-800'
+                        : invoice.status === 'pending'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : invoice.status === 'cancelled'
+                        ? 'bg-gray-100 text-gray-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {invoice.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {new Date(invoice.dueDate).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    {invoice.status === 'pending' && (
+                      <button
+                        onClick={() => onRecordPayment(invoice)}
+                        className="text-green-600 hover:text-green-900"
+                      >
+                        Record Payment
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -490,7 +560,12 @@ function InvoicesTab({ invoices, onSendInvoice, onViewInvoice }: any) {
 }
 
 // Payments Tab Component
-function PaymentsTab({ payments }: any) {
+function PaymentsTab({ payments, trainees }: any) {
+  const getTraineeName = (traineeId: string) => {
+    const trainee = trainees.find((t: any) => t.id === traineeId);
+    return trainee ? `${trainee.firstName} ${trainee.lastName}` : traineeId;
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-sm border">
       <div className="px-6 py-4 border-b border-gray-200">
@@ -501,7 +576,10 @@ function PaymentsTab({ payments }: any) {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Payment ID
+                Client
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Method
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Amount
@@ -513,38 +591,49 @@ function PaymentsTab({ payments }: any) {
                 Date
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Invoice
+                Invoices
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {payments.map((payment: Payment) => (
-              <tr key={payment.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  #{payment.id.slice(-8)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  ${payment.amount.toFixed(2)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    payment.status === 'succeeded'
-                      ? 'bg-green-100 text-green-800'
-                      : payment.status === 'failed'
-                      ? 'bg-red-100 text-red-800'
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {payment.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {new Date(payment.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {payment.invoiceId ? `#${payment.invoiceId.slice(-6)}` : 'N/A'}
+            {payments.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                  No payments yet
                 </td>
               </tr>
-            ))}
+            ) : (
+              payments.map((payment: Payment) => (
+                <tr key={payment.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {getTraineeName(payment.traineeId)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {payment.paymentMethod.replace('_', ' ')}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    ₪{payment.amount.toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      payment.status === 'completed'
+                        ? 'bg-green-100 text-green-800'
+                        : payment.status === 'failed'
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {payment.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {new Date(payment.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {payment.invoiceIds.length} invoice(s)
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -552,232 +641,209 @@ function PaymentsTab({ payments }: any) {
   );
 }
 
-// Reports Tab Component
-function ReportsTab({ trainerId }: { trainerId: string }) {
-  const [reportType, setReportType] = useState<'revenue' | 'comprehensive'>('revenue');
-  const [period, setPeriod] = useState<'month' | 'quarter' | 'year'>('month');
-  const [report, setReport] = useState<FinancialReport | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const generateReport = async () => {
-    try {
-      setLoading(true);
-      const reportData = await PaymentService.generateFinancialReport(trainerId, reportType, period);
-      setReport(reportData);
-    } catch (error) {
-      console.error('Error generating report:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+// Packages Tab Component
+function PackagesTab({ packages, onToggleActive }: any) {
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Generate Financial Report</h3>
+      <div className="bg-white rounded-lg shadow-sm border">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">Session Packages (מנויים)</h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Create and manage packages that trainees can purchase
+          </p>
+        </div>
+        <div className="p-6">
+          {packages.length === 0 ? (
+            <div className="text-center py-12">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No packages yet</h3>
+              <p className="mt-1 text-sm text-gray-500">Get started by creating a session package.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {packages.map((pkg: Package) => (
+                <div
+                  key={pkg.id}
+                  className={`border rounded-lg p-6 ${
+                    pkg.isActive ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h4 className="text-lg font-semibold text-gray-900">{pkg.name}</h4>
+                      {pkg.description && (
+                        <p className="text-sm text-gray-600 mt-1">{pkg.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center">
+                      <button
+                        onClick={() => onToggleActive(pkg.id, !pkg.isActive)}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                          pkg.isActive ? 'bg-blue-600' : 'bg-gray-200'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            pkg.isActive ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Report Type</label>
-            <select
-              value={reportType}
-              onChange={(e) => setReportType(e.target.value as any)}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value="revenue">Revenue Report</option>
-              <option value="comprehensive">Comprehensive Report</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Period</label>
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value as any)}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value="month">Last Month</option>
-              <option value="quarter">Last Quarter</option>
-              <option value="year">Last Year</option>
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={generateReport}
-              disabled={loading}
-              className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? 'Generating...' : 'Generate Report'}
-            </button>
-          </div>
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Sessions:</span>
+                      <span className="text-sm font-medium text-gray-900">{pkg.sessionsIncluded}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Price:</span>
+                      <span className="text-lg font-semibold text-gray-900">₪{pkg.price.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Valid for:</span>
+                      <span className="text-sm font-medium text-gray-900">{pkg.validityDays} days</span>
+                    </div>
+                    {pkg.sessionTypes && pkg.sessionTypes.length > 0 && (
+                      <div className="flex items-start justify-between">
+                        <span className="text-sm text-gray-600">Session types:</span>
+                        <span className="text-sm font-medium text-gray-900 text-right">
+                          {pkg.sessionTypes.join(', ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      pkg.isActive
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {pkg.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      Created {new Date(pkg.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      {report && (
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
-            {reportType.charAt(0).toUpperCase() + reportType.slice(1)} Report
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">${report.totalRevenue.toFixed(2)}</div>
-              <div className="text-sm text-gray-500">Total Revenue</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{report.totalSessions}</div>
-              <div className="text-sm text-gray-500">Total Sessions</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">${report.averageSessionValue.toFixed(2)}</div>
-              <div className="text-sm text-gray-500">Average Session Value</div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-// Create Invoice Modal Component
-function CreateInvoiceModal({ isOpen, onClose, onSubmit, trainees }: any) {
-  const [formData, setFormData] = useState<Partial<CreateInvoiceFormData>>({
-    title: '',
-    dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 15 days from now
-    paymentTerms: 'Net 15',
-    lineItems: [{ description: '', quantity: 1, unitPrice: 0 }],
-    isRecurring: false
+// Create Package Modal Component
+function CreatePackageModal({ isOpen, onClose, onSubmit }: any) {
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    sessionsIncluded: 1,
+    price: 0,
+    validityDays: 30,
+    sessionTypes: [] as string[],
+    isActive: true
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.traineeId && formData.title && formData.lineItems) {
-      onSubmit(formData as CreateInvoiceFormData);
-    }
-  };
-
-  const addLineItem = () => {
+    onSubmit(formData);
     setFormData({
-      ...formData,
-      lineItems: [...(formData.lineItems || []), { description: '', quantity: 1, unitPrice: 0 }]
+      name: '',
+      description: '',
+      sessionsIncluded: 1,
+      price: 0,
+      validityDays: 30,
+      sessionTypes: [],
+      isActive: true
     });
-  };
-
-  const removeLineItem = (index: number) => {
-    const newItems = formData.lineItems?.filter((_, i) => i !== index) || [];
-    setFormData({ ...formData, lineItems: newItems });
-  };
-
-  const updateLineItem = (index: number, field: string, value: any) => {
-    const newItems = [...(formData.lineItems || [])];
-    newItems[index] = { ...newItems[index], [field]: value };
-    setFormData({ ...formData, lineItems: newItems });
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Create Invoice</h3>
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Create Session Package</h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Package Name</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              placeholder="e.g., 10 Session Package"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Description (Optional)</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              rows={2}
+              placeholder="Package details..."
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Client</label>
-              <select
-                value={formData.traineeId || ''}
-                onChange={(e) => setFormData({...formData, traineeId: e.target.value})}
+              <label className="block text-sm font-medium text-gray-700">Sessions Included</label>
+              <input
+                type="number"
+                value={formData.sessionsIncluded}
+                onChange={(e) => setFormData({...formData, sessionsIncluded: parseInt(e.target.value)})}
                 className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                min="1"
                 required
-              >
-                <option value="">Select a client</option>
-                {trainees.map((trainee: Trainee) => (
-                  <option key={trainee.id} value={trainee.id}>
-                    {trainee.firstName} {trainee.lastName}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Due Date</label>
+              <label className="block text-sm font-medium text-gray-700">Price (₪)</label>
               <input
-                type="date"
-                value={formData.dueDate || ''}
-                onChange={(e) => setFormData({...formData, dueDate: e.target.value})}
+                type="number"
+                value={formData.price}
+                onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value)})}
                 className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                min="0"
+                step="0.01"
                 required
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Invoice Title</label>
+            <label className="block text-sm font-medium text-gray-700">Valid for (days)</label>
             <input
-              type="text"
-              value={formData.title || ''}
-              onChange={(e) => setFormData({...formData, title: e.target.value})}
+              type="number"
+              value={formData.validityDays}
+              onChange={(e) => setFormData({...formData, validityDays: parseInt(e.target.value)})}
               className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-              placeholder="e.g., Personal Training Sessions - November 2024"
+              min="1"
               required
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Line Items</label>
-            {formData.lineItems?.map((item, index) => (
-              <div key={index} className="grid grid-cols-6 gap-2 mb-2">
-                <input
-                  type="text"
-                  placeholder="Description"
-                  value={item.description}
-                  onChange={(e) => updateLineItem(index, 'description', e.target.value)}
-                  className="col-span-3 border border-gray-300 rounded-md px-3 py-2"
-                  required
-                />
-                <input
-                  type="number"
-                  placeholder="Qty"
-                  value={item.quantity}
-                  onChange={(e) => updateLineItem(index, 'quantity', parseInt(e.target.value))}
-                  className="border border-gray-300 rounded-md px-3 py-2"
-                  min="1"
-                  required
-                />
-                <input
-                  type="number"
-                  placeholder="Price"
-                  value={item.unitPrice}
-                  onChange={(e) => updateLineItem(index, 'unitPrice', parseFloat(e.target.value))}
-                  className="border border-gray-300 rounded-md px-3 py-2"
-                  min="0"
-                  step="0.01"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => removeLineItem(index)}
-                  className="text-red-600 hover:text-red-800"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={addLineItem}
-              className="text-blue-600 hover:text-blue-800 text-sm"
-            >
-              + Add Line Item
-            </button>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Notes</label>
-            <textarea
-              value={formData.notes || ''}
-              onChange={(e) => setFormData({...formData, notes: e.target.value})}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
-              rows={3}
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="isActive"
+              checked={formData.isActive}
+              onChange={(e) => setFormData({...formData, isActive: e.target.checked})}
+              className="h-4 w-4 text-blue-600 border-gray-300 rounded"
             />
+            <label htmlFor="isActive" className="ml-2 block text-sm text-gray-900">
+              Make package active immediately
+            </label>
           </div>
 
           <div className="flex justify-end space-x-3 mt-6">
@@ -792,7 +858,98 @@ function CreateInvoiceModal({ isOpen, onClose, onSubmit, trainees }: any) {
               type="submit"
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
             >
-              Create Invoice
+              Create Package
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Record Payment Modal Component
+function RecordPaymentModal({ isOpen, invoice, onClose, onSubmit }: any) {
+  const [formData, setFormData] = useState({
+    amount: invoice?.amount || 0,
+    paymentMethod: 'cash' as Payment['paymentMethod'],
+    notes: ''
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({
+      ...formData,
+      invoiceIds: [invoice.id]
+    });
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Record Payment</h3>
+
+        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+          <p className="text-sm text-gray-600">Invoice</p>
+          <p className="text-sm font-medium text-gray-900">{invoice?.description}</p>
+          <p className="text-lg font-semibold text-gray-900 mt-1">₪{invoice?.amount.toLocaleString()}</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Amount Paid (₪)</label>
+            <input
+              type="number"
+              value={formData.amount}
+              onChange={(e) => setFormData({...formData, amount: parseFloat(e.target.value)})}
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              min="0"
+              step="0.01"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Payment Method</label>
+            <select
+              value={formData.paymentMethod}
+              onChange={(e) => setFormData({...formData, paymentMethod: e.target.value as Payment['paymentMethod']})}
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              required
+            >
+              <option value="cash">Cash</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="credit_card">Credit Card</option>
+              <option value="check">Check</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Notes (Optional)</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+              rows={3}
+              placeholder="Add any notes about this payment..."
+            />
+          </div>
+
+          <div className="flex justify-end space-x-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700"
+            >
+              Record Payment
             </button>
           </div>
         </form>

@@ -1,719 +1,552 @@
+/**
+ * Payment Service
+ * Handles all payment, billing, and package management
+ */
+
+import { db } from './firebase';
 import {
   collection,
   doc,
-  addDoc,
+  setDoc,
   getDoc,
   getDocs,
   updateDoc,
   query,
   where,
   orderBy,
-  limit
+  addDoc,
+  Timestamp,
+  writeBatch,
+  increment,
 } from 'firebase/firestore';
-import { db } from './firebase';
-import type {
-  PaymentAccount,
-  PaymentMethod,
+import {
+  Package,
+  TraineePackage,
   Invoice,
   Payment,
-  FinancialReport,
-  PaymentSettings,
-  CreateInvoiceFormData,
-  ProcessPaymentFormData,
-  PaymentMethodFormData
-} from '../shared-types/payments';
+  PaymentAccount,
+  Transaction,
+  PaymentSummary,
+  SessionPaymentInfo,
+} from '../shared-types/payment/types';
 
-// Collections
-const PAYMENT_ACCOUNTS_COLLECTION = 'payment_accounts';
-const PAYMENT_METHODS_COLLECTION = 'payment_methods';
+const PACKAGES_COLLECTION = 'packages';
+const TRAINEE_PACKAGES_COLLECTION = 'trainee_packages';
 const INVOICES_COLLECTION = 'invoices';
 const PAYMENTS_COLLECTION = 'payments';
-const FINANCIAL_REPORTS_COLLECTION = 'financial_reports';
-const PAYMENT_SETTINGS_COLLECTION = 'payment_settings';
+const PAYMENT_ACCOUNTS_COLLECTION = 'payment_accounts';
+const TRANSACTIONS_COLLECTION = 'transactions';
+const SESSIONS_COLLECTION = 'sessions';
 
 export class PaymentService {
+  /**
+   * PACKAGE MANAGEMENT
+   */
 
-  // ==================== PAYMENT ACCOUNT MANAGEMENT ====================
+  // Create a new package offering
+  static async createPackage(trainerId: string, packageData: Omit<Package, 'id' | 'trainerId' | 'createdAt' | 'updatedAt'>): Promise<string> {
+    if (!db) throw new Error('Firestore not initialized');
 
-  // Create or update payment account
-  static async setupPaymentAccount(
+    const now = new Date().toISOString();
+    const packageDoc: Omit<Package, 'id'> = {
+      ...packageData,
+      trainerId,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const docRef = await addDoc(collection(db, PACKAGES_COLLECTION), packageDoc);
+    return docRef.id;
+  }
+
+  // Get all packages for a trainer
+  static async getTrainerPackages(trainerId: string): Promise<Package[]> {
+    if (!db) return [];
+    
+    const q = query(
+      collection(db, PACKAGES_COLLECTION),
+      where('trainerId', '==', trainerId),
+      orderBy('price', 'asc')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Package));
+  }
+
+  // Get active packages (for trainees to purchase)
+  static async getActivePackages(trainerId: string): Promise<Package[]> {
+    if (!db) return [];
+    
+    const q = query(
+      collection(db, PACKAGES_COLLECTION),
+      where('trainerId', '==', trainerId),
+      where('isActive', '==', true),
+      orderBy('price', 'asc')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Package));
+  }
+
+  // Update package
+  static async updatePackage(packageId: string, updates: Partial<Package>): Promise<void> {
+    if (!db) throw new Error('Firestore not initialized');
+    
+    const docRef = doc(db, PACKAGES_COLLECTION, packageId);
+    await updateDoc(docRef, {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * TRAINEE PACKAGE MANAGEMENT
+   */
+
+  // Get trainee's active packages
+  static async getTraineePackages(traineeId: string, trainerId?: string): Promise<TraineePackage[]> {
+    if (!db) return [];
+    
+    let q = query(
+      collection(db, TRAINEE_PACKAGES_COLLECTION),
+      where('traineeId', '==', traineeId),
+      orderBy('purchaseDate', 'desc')
+    );
+
+    if (trainerId) {
+      q = query(q, where('trainerId', '==', trainerId));
+    }
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TraineePackage));
+  }
+
+  // Get best available package for a trainee (most sessions remaining, not expired)
+  static async getBestAvailablePackage(traineeId: string, trainerId: string, sessionType?: string): Promise<TraineePackage | null> {
+    const packages = await this.getTraineePackages(traineeId, trainerId);
+
+    const activePackages = packages.filter(pkg =>
+      pkg.status === 'active' &&
+      pkg.remainingSessions > 0 &&
+      new Date(pkg.expiryDate) > new Date()
+    );
+
+    if (activePackages.length === 0) return null;
+
+    // Return package with most sessions remaining
+    return activePackages.reduce((best, current) =>
+      current.remainingSessions > best.remainingSessions ? current : best
+    );
+  }
+
+  // Use a session credit from package
+  static async usePackageCredit(traineePackageId: string, sessionId: string): Promise<void> {
+    if (!db) throw new Error('Firestore not initialized');
+    
+    const packageRef = doc(db, TRAINEE_PACKAGES_COLLECTION, traineePackageId);
+    const packageDoc = await getDoc(packageRef);
+
+    if (!packageDoc.exists()) {
+      throw new Error('Package not found');
+    }
+
+    const packageData = { id: packageDoc.id, ...packageDoc.data() } as TraineePackage;
+
+    if (packageData.remainingSessions <= 0) {
+      throw new Error('No sessions remaining in package');
+    }
+
+    if (packageData.status !== 'active') {
+      throw new Error('Package is not active');
+    }
+
+    if (new Date(packageData.expiryDate) < new Date()) {
+      throw new Error('Package has expired');
+    }
+
+    const newRemaining = packageData.remainingSessions - 1;
+    const updates: Partial<TraineePackage> = {
+      remainingSessions: newRemaining,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Mark as exhausted if no sessions left
+    if (newRemaining === 0) {
+      updates.status = 'exhausted';
+    }
+
+    await updateDoc(packageRef, updates);
+
+    // Create transaction record
+    await addDoc(collection(db, TRANSACTIONS_COLLECTION), {
+      trainerId: packageData.trainerId,
+      traineeId: packageData.traineeId,
+      type: 'debit',
+      amount: 0,
+      sessionId,
+      traineePackageId,
+      packageId: packageData.packageId,
+      description: `Session credit used from package: ${packageData.packageName} (${newRemaining} remaining)`,
+      createdAt: new Date().toISOString(),
+    } as Omit<Transaction, 'id'>);
+  }
+
+  /**
+   * INVOICE MANAGEMENT
+   */
+
+  // Create invoice for a session
+  static async createSessionInvoice(
     trainerId: string,
-    accountData: Partial<PaymentAccount>
-  ): Promise<string> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
-
-      const now = new Date().toISOString();
-      const existingAccount = await this.getPaymentAccount(trainerId);
-
-      if (existingAccount) {
-        // Update existing account
-        const docRef = doc(db, PAYMENT_ACCOUNTS_COLLECTION, existingAccount.id);
-        await updateDoc(docRef, {
-          ...accountData,
-          updatedAt: now
-        });
-        return existingAccount.id;
-      } else {
-        // Create new account
-        const account: Omit<PaymentAccount, 'id'> = {
-          trainerId,
-          accountType: accountData.accountType || 'individual',
-          businessName: accountData.businessName,
-          taxId: accountData.taxId,
-          payoutSchedule: accountData.payoutSchedule || 'weekly',
-          minimumPayoutAmount: accountData.minimumPayoutAmount || 25,
-          currency: accountData.currency || 'USD',
-          isVerified: false,
-          isActive: true,
-          verificationStatus: 'pending',
-          platformFeePercentage: 5.0, // Default platform fee
-          processingFeePercentage: 2.9, // Default processing fee
-          createdAt: now,
-          updatedAt: now
-        };
-
-        const accountRef = await addDoc(collection(db, PAYMENT_ACCOUNTS_COLLECTION), account);
-        return accountRef.id;
-      }
-    } catch (error) {
-      console.error('Error setting up payment account:', error);
-      throw error;
-    }
-  }
-
-  // Get payment account
-  static async getPaymentAccount(trainerId: string): Promise<PaymentAccount | null> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
-
-      const accountQuery = query(
-        collection(db, PAYMENT_ACCOUNTS_COLLECTION),
-        where('trainerId', '==', trainerId),
-        limit(1)
-      );
-
-      const snapshot = await getDocs(accountQuery);
-      if (!snapshot.empty) {
-        const doc = snapshot.docs[0];
-        return { id: doc.id, ...doc.data() } as PaymentAccount;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Error getting payment account:', error);
-      throw error;
-    }
-  }
-
-  // ==================== INVOICE MANAGEMENT ====================
-
-  // Create an invoice
-  static async createInvoice(
-    trainerId: string,
-    invoiceData: CreateInvoiceFormData
-  ): Promise<string> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
-
-      const now = new Date().toISOString();
-      const settings = await this.getPaymentSettings(trainerId);
-
-      // Generate invoice number
-      const invoiceNumber = await this.generateInvoiceNumber(trainerId);
-
-      // Calculate totals
-      const subtotal = invoiceData.lineItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-      const taxAmount = subtotal * ((settings?.taxRate || 0) / 100);
-      const totalAmount = subtotal + taxAmount;
-
-      const invoice: Omit<Invoice, 'id'> = {
-        trainerId,
-        traineeId: invoiceData.traineeId,
-        invoiceNumber,
-        title: invoiceData.title,
-        description: invoiceData.description,
-        subtotal,
-        taxAmount,
-        platformFee: 0, // Calculated when payment is processed
-        processingFee: 0, // Calculated when payment is processed
-        totalAmount,
-        currency: settings?.currency || 'USD',
-        lineItems: invoiceData.lineItems.map((item, index) => ({
-          id: `${Date.now()}-${index}`,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          totalPrice: item.quantity * item.unitPrice,
-          sessionId: item.sessionId,
-          isTaxable: true,
-          taxRate: settings?.taxRate || 0,
-          taxAmount: (item.quantity * item.unitPrice) * ((settings?.taxRate || 0) / 100)
-        })),
-        status: 'draft',
-        paymentStatus: 'unpaid',
-        issueDate: now.split('T')[0],
-        dueDate: invoiceData.dueDate,
-        paymentTerms: invoiceData.paymentTerms,
-        notes: invoiceData.notes,
-        isRecurring: invoiceData.isRecurring,
-        recurringFrequency: invoiceData.recurringFrequency,
-        sessionIds: invoiceData.lineItems.map(item => item.sessionId).filter(Boolean) as string[],
-        createdAt: now,
-        updatedAt: now
-      };
-
-      const invoiceRef = await addDoc(collection(db, INVOICES_COLLECTION), invoice);
-      return invoiceRef.id;
-    } catch (error) {
-      console.error('Error creating invoice:', error);
-      throw error;
-    }
-  }
-
-  // Get invoices for a trainer
-  static async getTrainerInvoices(
-    trainerId: string,
-    options: { status?: string; limit?: number } = {}
-  ): Promise<Invoice[]> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
-
-      let invoicesQuery = query(
-        collection(db, INVOICES_COLLECTION),
-        where('trainerId', '==', trainerId),
-        orderBy('createdAt', 'desc')
-      );
-
-      if (options.status) {
-        invoicesQuery = query(invoicesQuery, where('status', '==', options.status));
-      }
-
-      if (options.limit) {
-        invoicesQuery = query(invoicesQuery, limit(options.limit));
-      }
-
-      const snapshot = await getDocs(invoicesQuery);
-      const invoices: Invoice[] = [];
-
-      snapshot.forEach((doc) => {
-        invoices.push({ id: doc.id, ...doc.data() } as Invoice);
-      });
-
-      return invoices;
-    } catch (error) {
-      console.error('Error getting trainer invoices:', error);
-      throw error;
-    }
-  }
-
-  // Get a single invoice
-  static async getInvoice(invoiceId: string): Promise<Invoice | null> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
-
-      const docRef = doc(db, INVOICES_COLLECTION, invoiceId);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() } as Invoice;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Error getting invoice:', error);
-      throw error;
-    }
-  }
-
-  // Send invoice to trainee
-  static async sendInvoice(invoiceId: string): Promise<void> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
-
-      const docRef = doc(db, INVOICES_COLLECTION, invoiceId);
-      await updateDoc(docRef, {
-        status: 'sent',
-        sentDate: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      // TODO: Integrate with email service to actually send the invoice
-      console.log('Invoice sent (email integration needed)');
-    } catch (error) {
-      console.error('Error sending invoice:', error);
-      throw error;
-    }
-  }
-
-  // ==================== PAYMENT PROCESSING ====================
-
-  // Process a payment (mock implementation)
-  static async processPayment(
-    trainerId: string,
-    paymentData: ProcessPaymentFormData
-  ): Promise<string> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
-
-      const now = new Date().toISOString();
-      const account = await this.getPaymentAccount(trainerId);
-
-      if (!account) {
-        throw new Error('Payment account not found');
-      }
-
-      // Calculate fees
-      const platformFee = paymentData.amount * (account.platformFeePercentage / 100);
-      const processingFee = paymentData.amount * (account.processingFeePercentage / 100);
-      const netAmount = paymentData.amount - platformFee - processingFee;
-
-      // Mock payment processing (in real app, integrate with Stripe, PayPal, etc.)
-      const paymentStatus = Math.random() > 0.1 ? 'succeeded' : 'failed'; // 90% success rate for demo
-
-      const payment: Omit<Payment, 'id'> = {
-        trainerId,
-        traineeId: paymentData.traineeId,
-        invoiceId: paymentData.invoiceId,
-        amount: paymentData.amount,
-        currency: account.currency,
-        paymentMethodId: paymentData.paymentMethodId,
-        status: paymentStatus,
-        failureReason: paymentStatus === 'failed' ? 'Insufficient funds' : undefined,
-        stripePaymentIntentId: `pi_mock_${Date.now()}`,
-        externalReference: `ref_${Date.now()}`,
-        platformFee,
-        processingFee,
-        netAmount,
-        initiatedAt: now,
-        processedAt: paymentStatus === 'succeeded' ? now : undefined,
-        failedAt: paymentStatus === 'failed' ? now : undefined,
-        isRefunded: false,
-        description: paymentData.description,
-        receiptUrl: paymentStatus === 'succeeded' ? `https://mock-receipts.com/${Date.now()}` : undefined,
-        receiptNumber: paymentStatus === 'succeeded' ? `RCP-${Date.now()}` : undefined,
-        createdAt: now,
-        updatedAt: now
-      };
-
-      const paymentRef = await addDoc(collection(db, PAYMENTS_COLLECTION), payment);
-
-      // Update invoice if payment is for an invoice
-      if (paymentData.invoiceId && paymentStatus === 'succeeded') {
-        await this.updateInvoicePaymentStatus(paymentData.invoiceId, 'paid');
-      }
-
-      return paymentRef.id;
-    } catch (error) {
-      console.error('Error processing payment:', error);
-      throw error;
-    }
-  }
-
-  // Update invoice payment status
-  static async updateInvoicePaymentStatus(
-    invoiceId: string,
-    paymentStatus: Invoice['paymentStatus']
-  ): Promise<void> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
-
-      const docRef = doc(db, INVOICES_COLLECTION, invoiceId);
-      const updateData: any = {
-        paymentStatus,
-        updatedAt: new Date().toISOString()
-      };
-
-      if (paymentStatus === 'paid') {
-        updateData.paidDate = new Date().toISOString();
-        updateData.status = 'paid';
-      }
-
-      await updateDoc(docRef, updateData);
-    } catch (error) {
-      console.error('Error updating invoice payment status:', error);
-      throw error;
-    }
-  }
-
-  // ==================== PAYMENT METHODS ====================
-
-  // Add payment method (mock implementation)
-  static async addPaymentMethod(
     traineeId: string,
-    methodData: PaymentMethodFormData
+    sessionId: string,
+    sessionData: {
+      scheduledDate: string;
+      startTime: string;
+      sessionRate: number;
+      type: string;
+      traineePackageId?: string;
+    },
+    createAt: 'immediate' | 'before_24h' = 'before_24h'
   ): Promise<string> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
+    if (!db) throw new Error('Firestore not initialized');
+    
+    const now = new Date().toISOString();
+    const sessionDateTime = new Date(`${sessionData.scheduledDate}T${sessionData.startTime}`);
 
-      const now = new Date().toISOString();
+    // Calculate cancellation deadline (24h before session)
+    const cancellationDeadline = new Date(sessionDateTime);
+    cancellationDeadline.setHours(cancellationDeadline.getHours() - 24);
 
-      // Mock payment method creation (in real app, integrate with Stripe, etc.)
-      const method: Omit<PaymentMethod, 'id'> = {
-        traineeId,
-        type: methodData.type,
-        provider: 'stripe', // Default to Stripe for mock
-        cardLast4: methodData.type === 'card' ? methodData.cardNumber?.slice(-4) : undefined,
-        cardBrand: methodData.type === 'card' ? 'visa' : undefined, // Mock detection
-        cardExpMonth: methodData.cardExpMonth,
-        cardExpYear: methodData.cardExpYear,
-        bankName: methodData.type === 'bank_account' ? 'Mock Bank' : undefined,
-        accountLast4: methodData.type === 'bank_account' ? methodData.accountNumber?.slice(-4) : undefined,
-        stripePaymentMethodId: `pm_mock_${Date.now()}`,
-        isDefault: false, // Set as default separately
-        isActive: true,
-        isVerified: true, // Mock verification
-        nickname: methodData.nickname,
-        billingAddress: methodData.billingAddress,
-        createdAt: now,
-        updatedAt: now
-      };
+    // If creating invoice 24h before, set billing date to that time
+    const billingDate = createAt === 'before_24h'
+      ? cancellationDeadline.toISOString()
+      : now;
 
-      const methodRef = await addDoc(collection(db, PAYMENT_METHODS_COLLECTION), method);
-      return methodRef.id;
-    } catch (error) {
-      console.error('Error adding payment method:', error);
-      throw error;
+    const invoice: Omit<Invoice, 'id'> = {
+      trainerId,
+      traineeId,
+      sessionId,
+      traineePackageId: sessionData.traineePackageId,
+      type: 'session',
+      amount: sessionData.traineePackageId ? 0 : sessionData.sessionRate,
+      description: `${sessionData.type} session on ${sessionData.scheduledDate} at ${sessionData.startTime}`,
+      billingDate,
+      dueDate: sessionData.scheduledDate,
+      status: sessionData.traineePackageId ? 'paid' : 'pending',
+      cancellationDeadline: cancellationDeadline.toISOString(),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // If using package, mark as paid immediately
+    if (sessionData.traineePackageId) {
+      invoice.paidAt = now;
     }
+
+    const docRef = await addDoc(collection(db, INVOICES_COLLECTION), invoice);
+
+    // Create transaction record
+    await addDoc(collection(db, TRANSACTIONS_COLLECTION), {
+      trainerId,
+      traineeId,
+      type: sessionData.traineePackageId ? 'credit' : 'charge',
+      amount: sessionData.traineePackageId ? 0 : sessionData.sessionRate,
+      sessionId,
+      invoiceId: docRef.id,
+      traineePackageId: sessionData.traineePackageId,
+      description: invoice.description,
+      createdAt: now,
+    } as Omit<Transaction, 'id'>);
+
+    return docRef.id;
   }
 
-  // Get payment methods for a trainee
-  static async getTraineePaymentMethods(traineeId: string): Promise<PaymentMethod[]> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
+  // Get trainer's invoices
+  static async getTrainerInvoices(trainerId: string, status?: Invoice['status']): Promise<Invoice[]> {
+    if (!db) return [];
+    
+    let q = query(
+      collection(db, INVOICES_COLLECTION),
+      where('trainerId', '==', trainerId),
+      orderBy('billingDate', 'desc')
+    );
 
-      const methodsQuery = query(
-        collection(db, PAYMENT_METHODS_COLLECTION),
-        where('traineeId', '==', traineeId),
-        where('isActive', '==', true),
-        orderBy('isDefault', 'desc'),
-        orderBy('createdAt', 'desc')
-      );
-
-      const snapshot = await getDocs(methodsQuery);
-      const methods: PaymentMethod[] = [];
-
-      snapshot.forEach((doc) => {
-        methods.push({ id: doc.id, ...doc.data() } as PaymentMethod);
-      });
-
-      return methods;
-    } catch (error) {
-      console.error('Error getting payment methods:', error);
-      throw error;
+    if (status) {
+      q = query(q, where('status', '==', status));
     }
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
   }
 
-  // ==================== FINANCIAL REPORTING ====================
+  // Get trainee's invoices
+  static async getTraineeInvoices(traineeId: string, trainerId?: string): Promise<Invoice[]> {
+    if (!db) return [];
+    
+    let q = query(
+      collection(db, INVOICES_COLLECTION),
+      where('traineeId', '==', traineeId),
+      orderBy('billingDate', 'desc')
+    );
 
-  // Generate financial report
-  static async generateFinancialReport(
+    if (trainerId) {
+      q = query(q, where('trainerId', '==', trainerId));
+    }
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
+  }
+
+  // Cancel invoice (if within cancellation window)
+  static async cancelInvoice(invoiceId: string): Promise<void> {
+    if (!db) throw new Error('Firestore not initialized');
+    
+    const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
+    const invoiceDoc = await getDoc(invoiceRef);
+
+    if (!invoiceDoc.exists()) {
+      throw new Error('Invoice not found');
+    }
+
+    const invoice = { id: invoiceDoc.id, ...invoiceDoc.data() } as Invoice;
+
+    if (invoice.status !== 'pending') {
+      throw new Error('Can only cancel pending invoices');
+    }
+
+    // Check if within cancellation window
+    if (invoice.cancellationDeadline) {
+      const deadline = new Date(invoice.cancellationDeadline);
+      if (new Date() > deadline) {
+        throw new Error('Cancellation deadline has passed');
+      }
+    }
+
+    await updateDoc(invoiceRef, {
+      status: 'cancelled',
+      wasCancelledInTime: true,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * PAYMENT MANAGEMENT
+   */
+
+  // Record a payment
+  static async recordPayment(
     trainerId: string,
-    reportType: FinancialReport['reportType'],
-    period: FinancialReport['period'],
-    startDate?: string,
-    endDate?: string
-  ): Promise<FinancialReport> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
-
-      const now = new Date();
-      let calculatedStartDate: string;
-      let calculatedEndDate: string;
-
-      if (startDate && endDate) {
-        calculatedStartDate = startDate;
-        calculatedEndDate = endDate;
-      } else {
-        calculatedEndDate = now.toISOString().split('T')[0];
-        const start = new Date(now);
-
-        switch (period) {
-          case 'week':
-            start.setDate(now.getDate() - 7);
-            break;
-          case 'month':
-            start.setMonth(now.getMonth() - 1);
-            break;
-          case 'quarter':
-            start.setMonth(now.getMonth() - 3);
-            break;
-          case 'year':
-            start.setFullYear(now.getFullYear() - 1);
-            break;
-        }
-
-        calculatedStartDate = start.toISOString().split('T')[0];
-      }
-
-      // Get payments in the period
-      const payments = await this.getTrainerPayments(trainerId, calculatedStartDate, calculatedEndDate);
-      const successfulPayments = payments.filter(p => p.status === 'succeeded');
-
-      // Calculate metrics
-      const totalRevenue = successfulPayments.reduce((sum, p) => sum + p.amount, 0);
-      const totalSessions = successfulPayments.length;
-      const averageSessionValue = totalSessions > 0 ? totalRevenue / totalSessions : 0;
-
-      const platformFees = successfulPayments.reduce((sum, p) => sum + p.platformFee, 0);
-      const processingFees = successfulPayments.reduce((sum, p) => sum + p.processingFee, 0);
-      const netIncome = totalRevenue - platformFees - processingFees;
-
-      const refundedAmount = payments.filter(p => p.isRefunded).reduce((sum, p) => sum + (p.refundAmount || 0), 0);
-
-      const report: FinancialReport = {
-        id: '',
-        trainerId,
-        reportType,
-        period,
-        startDate: calculatedStartDate,
-        endDate: calculatedEndDate,
-        totalRevenue,
-        totalSessions,
-        averageSessionValue,
-        revenueBySessionType: {}, // Would need session data to populate
-        grossIncome: totalRevenue,
-        platformFees,
-        processingFees,
-        netIncome,
-        totalPayments: payments.length,
-        successfulPayments: successfulPayments.length,
-        failedPayments: payments.filter(p => p.status === 'failed').length,
-        refundedAmount,
-        taxableIncome: netIncome, // Simplified calculation
-        topSessionTypes: [], // Would need session data
-        topTrainees: [], // Would need aggregation
-        generatedAt: new Date().toISOString()
-      };
-
-      // Save report to database
-      const reportRef = await addDoc(collection(db, FINANCIAL_REPORTS_COLLECTION), report);
-      report.id = reportRef.id;
-
-      return report;
-    } catch (error) {
-      console.error('Error generating financial report:', error);
-      throw error;
+    traineeId: string,
+    paymentData: {
+      amount: number;
+      invoiceIds: string[];
+      paymentMethod: Payment['paymentMethod'];
+      transactionId?: string;
+      notes?: string;
     }
-  }
+  ): Promise<string> {
+    if (!db) throw new Error('Firestore not initialized');
+    
+    const now = new Date().toISOString();
+    const batch = writeBatch(db);
 
-  // Get trainer payments
-  static async getTrainerPayments(
-    trainerId: string,
-    startDate?: string,
-    endDate?: string
-  ): Promise<Payment[]> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
+    // 1. Create payment record
+    const paymentRef = doc(collection(db, PAYMENTS_COLLECTION));
+    const payment: Omit<Payment, 'id'> = {
+      trainerId,
+      traineeId,
+      amount: paymentData.amount,
+      currency: 'ILS',
+      invoiceIds: paymentData.invoiceIds,
+      paymentMethod: paymentData.paymentMethod,
+      paymentProcessor: 'manual',
+      transactionId: paymentData.transactionId,
+      status: 'completed',
+      notes: paymentData.notes,
+      createdAt: now,
+      updatedAt: now,
+    };
+    batch.set(paymentRef, payment);
 
-      const paymentsQuery = query(
-        collection(db, PAYMENTS_COLLECTION),
-        where('trainerId', '==', trainerId),
-        orderBy('createdAt', 'desc')
-      );
-
-      const snapshot = await getDocs(paymentsQuery);
-      let payments: Payment[] = [];
-
-      snapshot.forEach((doc) => {
-        payments.push({ id: doc.id, ...doc.data() } as Payment);
+    // 2. Update invoices as paid
+    for (const invoiceId of paymentData.invoiceIds) {
+      const invoiceRef = doc(db, INVOICES_COLLECTION, invoiceId);
+      batch.update(invoiceRef, {
+        status: 'paid',
+        paymentId: paymentRef.id,
+        paidAt: now,
+        updatedAt: now,
       });
-
-      // Filter by date range if provided
-      if (startDate || endDate) {
-        payments = payments.filter(payment => {
-          const paymentDate = payment.createdAt.split('T')[0];
-          if (startDate && paymentDate < startDate) return false;
-          if (endDate && paymentDate > endDate) return false;
-          return true;
-        });
-      }
-
-      return payments;
-    } catch (error) {
-      console.error('Error getting trainer payments:', error);
-      throw error;
     }
+
+    // 3. Create transaction record
+    const transactionRef = doc(collection(db, TRANSACTIONS_COLLECTION));
+    const transaction: Omit<Transaction, 'id'> = {
+      trainerId,
+      traineeId,
+      type: 'payment',
+      amount: paymentData.amount,
+      paymentId: paymentRef.id,
+      description: `Payment for ${paymentData.invoiceIds.length} invoice(s)`,
+      createdAt: now,
+    };
+    batch.set(transactionRef, transaction);
+
+    await batch.commit();
+    return paymentRef.id;
   }
 
-  // ==================== PAYMENT SETTINGS ====================
+  // Get trainer's payments
+  static async getTrainerPayments(trainerId: string): Promise<Payment[]> {
+    if (!db) return [];
+    
+    const q = query(
+      collection(db, PAYMENTS_COLLECTION),
+      where('trainerId', '==', trainerId),
+      orderBy('createdAt', 'desc')
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Payment));
+  }
 
-  // Get payment settings
-  static async getPaymentSettings(trainerId: string): Promise<PaymentSettings | null> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
+  /**
+   * PAYMENT ACCOUNT MANAGEMENT
+   */
 
-      const docRef = doc(db, PAYMENT_SETTINGS_COLLECTION, trainerId);
-      const docSnap = await getDoc(docRef);
+  // Get or create payment account
+  static async getPaymentAccount(trainerId: string): Promise<PaymentAccount> {
+    if (!db) throw new Error('Firestore not initialized');
+    
+    const docRef = doc(db, PAYMENT_ACCOUNTS_COLLECTION, trainerId);
+    const docSnap = await getDoc(docRef);
 
-      if (docSnap.exists()) {
-        return { trainerId, ...docSnap.data() } as PaymentSettings;
-      }
+    if (docSnap.exists()) {
+      return { trainerId, ...docSnap.data() } as PaymentAccount;
+    }
 
-      // Return default settings
+    // Create default payment account
+    const now = new Date().toISOString();
+    const defaultAccount: PaymentAccount = {
+      trainerId,
+      acceptCash: true,
+      acceptBankTransfer: true,
+      defaultCancellationWindow: 24,
+      lateCancellationFee: 0,
+      noShowFee: 0,
+      nextInvoiceNumber: 1001,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await setDoc(docRef, defaultAccount);
+    return defaultAccount;
+  }
+
+  // Update payment account
+  static async updatePaymentAccount(trainerId: string, updates: Partial<PaymentAccount>): Promise<void> {
+    if (!db) throw new Error('Firestore not initialized');
+    
+    const docRef = doc(db, PAYMENT_ACCOUNTS_COLLECTION, trainerId);
+    await updateDoc(docRef, {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * SUMMARY AND ANALYTICS
+   */
+
+  // Get payment summary for dashboard
+  static async getPaymentSummary(trainerId: string, year: number, month: number): Promise<PaymentSummary> {
+    if (!db) {
       return {
         trainerId,
-        defaultSessionRates: {
-          personal_training: 100,
-          group_training: 50,
-          assessment: 150,
-          consultation: 75
-        },
-        currency: 'USD',
-        taxRate: 8.25, // Default tax rate
-        defaultPaymentTerms: 'Net 15',
-        latePaymentFee: 25,
-        latePaymentFeeType: 'flat',
-        invoicePrefix: 'INV-',
-        nextInvoiceNumber: 1,
-        autoInvoiceAfterSession: false,
-        paymentDueDays: 15,
-        sendInvoiceReminders: true,
-        reminderDaysBefore: [7, 3, 1],
-        sendPaymentConfirmations: true,
-        allowPartialRefunds: true,
-        updatedAt: new Date().toISOString()
+        period: `${year}-${String(month).padStart(2, '0')}`,
+        totalRevenue: 0,
+        pendingPayments: 0,
+        overduePayments: 0,
+        sessionRevenue: 0,
+        packageRevenue: 0,
+        totalSessions: 0,
+        paidSessions: 0,
+        unpaidSessions: 0,
+        packagesSold: 0,
+        activePackages: 0,
       };
-    } catch (error) {
-      console.error('Error getting payment settings:', error);
-      throw error;
     }
-  }
 
-  // Update payment settings
-  static async updatePaymentSettings(
-    trainerId: string,
-    settings: Partial<PaymentSettings>
-  ): Promise<void> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
+    const period = `${year}-${String(month).padStart(2, '0')}`;
+    const startDate = new Date(year, month - 1, 1).toISOString();
+    const endDate = new Date(year, month, 0, 23, 59, 59).toISOString();
 
-      const docRef = doc(db, PAYMENT_SETTINGS_COLLECTION, trainerId);
-      await updateDoc(docRef, {
-        ...settings,
-        updatedAt: new Date().toISOString()
-      });
-    } catch (error) {
-      console.error('Error updating payment settings:', error);
-      throw error;
-    }
-  }
+    // Get invoices for the period
+    const invoicesQuery = query(
+      collection(db, INVOICES_COLLECTION),
+      where('trainerId', '==', trainerId),
+      where('billingDate', '>=', startDate),
+      where('billingDate', '<=', endDate)
+    );
+    const invoicesSnapshot = await getDocs(invoicesQuery);
+    const invoices = invoicesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
 
-  // ==================== UTILITY METHODS ====================
+    // Calculate metrics
+    const totalRevenue = invoices
+      .filter(inv => inv.status === 'paid')
+      .reduce((sum, inv) => sum + inv.amount, 0);
 
-  // Generate unique invoice number
-  static async generateInvoiceNumber(trainerId: string): Promise<string> {
-    try {
-      const settings = await this.getPaymentSettings(trainerId);
-      const prefix = settings?.invoicePrefix || 'INV-';
-      const nextNumber = settings?.nextInvoiceNumber || 1;
+    const pendingPayments = invoices
+      .filter(inv => inv.status === 'pending')
+      .reduce((sum, inv) => sum + inv.amount, 0);
 
-      // Update the next invoice number
-      if (settings) {
-        await this.updatePaymentSettings(trainerId, {
-          nextInvoiceNumber: nextNumber + 1
-        });
-      }
+    const overduePayments = invoices
+      .filter(inv => inv.status === 'overdue')
+      .reduce((sum, inv) => sum + inv.amount, 0);
 
-      return `${prefix}${nextNumber.toString().padStart(6, '0')}`;
-    } catch (error) {
-      console.error('Error generating invoice number:', error);
-      throw error;
-    }
-  }
+    const sessionRevenue = invoices
+      .filter(inv => inv.type === 'session' && inv.status === 'paid')
+      .reduce((sum, inv) => sum + inv.amount, 0);
 
-  // Calculate platform revenue for a period
-  static async calculatePlatformRevenue(
-    startDate: string,
-    endDate: string
-  ): Promise<{ totalRevenue: number; platformFees: number; processingFees: number }> {
-    try {
-      if (!db) {
-        throw new Error('Firebase Firestore not initialized');
-      }
+    const packageRevenue = invoices
+      .filter(inv => inv.type === 'package' && inv.status === 'paid')
+      .reduce((sum, inv) => sum + inv.amount, 0);
 
-      const paymentsQuery = query(
-        collection(db, PAYMENTS_COLLECTION),
-        where('status', '==', 'succeeded'),
-        orderBy('createdAt', 'asc')
-      );
+    const sessionInvoices = invoices.filter(inv => inv.type === 'session');
+    const totalSessions = sessionInvoices.length;
+    const paidSessions = sessionInvoices.filter(inv => inv.status === 'paid').length;
+    const unpaidSessions = sessionInvoices.filter(inv => inv.status === 'pending').length;
 
-      const snapshot = await getDocs(paymentsQuery);
-      let totalRevenue = 0;
-      let platformFees = 0;
-      let processingFees = 0;
+    // Get packages sold in period
+    const packagesQuery = query(
+      collection(db, TRAINEE_PACKAGES_COLLECTION),
+      where('trainerId', '==', trainerId),
+      where('purchaseDate', '>=', startDate),
+      where('purchaseDate', '<=', endDate)
+    );
+    const packagesSnapshot = await getDocs(packagesQuery);
+    const packagesSold = packagesSnapshot.size;
 
-      snapshot.forEach((doc) => {
-        const payment = doc.data() as Payment;
-        const paymentDate = payment.createdAt.split('T')[0];
+    // Get active packages
+    const activePackagesQuery = query(
+      collection(db, TRAINEE_PACKAGES_COLLECTION),
+      where('trainerId', '==', trainerId),
+      where('status', '==', 'active')
+    );
+    const activePackagesSnapshot = await getDocs(activePackagesQuery);
+    const activePackages = activePackagesSnapshot.size;
 
-        if (paymentDate >= startDate && paymentDate <= endDate) {
-          totalRevenue += payment.amount;
-          platformFees += payment.platformFee;
-          processingFees += payment.processingFee;
-        }
-      });
-
-      return { totalRevenue, platformFees, processingFees };
-    } catch (error) {
-      console.error('Error calculating platform revenue:', error);
-      throw error;
-    }
-  }
-
-  // Get payment statistics
-  static async getPaymentStats(trainerId: string): Promise<{
-    totalRevenue: number;
-    totalPayments: number;
-    averagePayment: number;
-    successRate: number;
-  }> {
-    try {
-      const payments = await this.getTrainerPayments(trainerId);
-      const successfulPayments = payments.filter(p => p.status === 'succeeded');
-
-      const totalRevenue = successfulPayments.reduce((sum, p) => sum + p.amount, 0);
-      const totalPayments = payments.length;
-      const averagePayment = successfulPayments.length > 0 ? totalRevenue / successfulPayments.length : 0;
-      const successRate = totalPayments > 0 ? (successfulPayments.length / totalPayments) * 100 : 0;
-
-      return {
-        totalRevenue,
-        totalPayments,
-        averagePayment,
-        successRate
-      };
-    } catch (error) {
-      console.error('Error getting payment stats:', error);
-      throw error;
-    }
+    return {
+      trainerId,
+      period,
+      totalRevenue,
+      pendingPayments,
+      overduePayments,
+      sessionRevenue,
+      packageRevenue,
+      totalSessions,
+      paidSessions,
+      unpaidSessions,
+      packagesSold,
+      activePackages,
+    };
   }
 }
