@@ -473,13 +473,20 @@ function WeekView({
               return (
                 <div
                   key={dayIndex}
-                  onClick={() => booking ? onSessionClick(booking) : onTimeSlotClick(dateStr, time)}
-                  className={`p-2 border-r last:border-r-0 h-12 relative cursor-pointer transition-colors ${
+                  onClick={() => {
+                    if (booking) {
+                      onSessionClick(booking);
+                    } else if (isAvailable) {
+                      onTimeSlotClick(dateStr, time);
+                    }
+                    // Do nothing if slot is not available
+                  }}
+                  className={`p-2 border-r last:border-r-0 h-12 relative transition-colors ${
                     isBooked && colors
-                      ? `${colors.bg} ${colors.border}`
+                      ? `${colors.bg} ${colors.border} cursor-pointer`
                       : isAvailable
-                      ? 'bg-green-50 hover:bg-green-100'
-                      : 'bg-gray-50 hover:bg-gray-100'
+                      ? 'bg-green-50 hover:bg-green-100 cursor-pointer'
+                      : 'bg-gray-50 cursor-not-allowed opacity-60'
                   }`}
                 >
                   {isBooked && booking && isFirstSlot && (() => {
