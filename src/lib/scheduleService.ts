@@ -47,6 +47,8 @@ export class ScheduleService {
       }
 
       const now = new Date().toISOString();
+
+      // Build slot object, omitting undefined fields for Firestore compatibility
       const slot: Omit<TrainerAvailabilitySlot, 'id'> = {
         trainerId,
         dayOfWeek: availabilityData.dayOfWeek,
@@ -54,16 +56,26 @@ export class ScheduleService {
         endTime: availabilityData.endTime,
         isAvailable: true,
         sessionTypes: availabilityData.sessionTypes,
-        maxBookings: availabilityData.maxBookings,
         recurrenceType: availabilityData.recurrenceType,
-        recurrenceEnd: availabilityData.recurrenceEnd,
         exceptions: [],
-        notes: availabilityData.notes,
-        location: availabilityData.location,
         isRemote: availabilityData.isRemote || false,
         createdAt: now,
         updatedAt: now
       };
+
+      // Add optional fields only if they're not undefined
+      if (availabilityData.maxBookings !== undefined) {
+        slot.maxBookings = availabilityData.maxBookings;
+      }
+      if (availabilityData.recurrenceEnd !== undefined) {
+        slot.recurrenceEnd = availabilityData.recurrenceEnd;
+      }
+      if (availabilityData.notes !== undefined) {
+        slot.notes = availabilityData.notes;
+      }
+      if (availabilityData.location !== undefined) {
+        slot.location = availabilityData.location;
+      }
 
       const slotRef = await addDoc(collection(db, AVAILABILITY_SLOTS_COLLECTION), slot);
 
@@ -139,9 +151,9 @@ export class ScheduleService {
         const [endHour, endMinute] = availability.endTime.split(':').map(Number);
         const durationMinutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
 
+        // Build booking slot, omitting undefined fields for Firestore compatibility
         const bookingSlot: Omit<BookingSlot, 'id'> = {
           trainerId: availability.trainerId,
-          traineeId: undefined,
           date: dateStr,
           startTime: availability.startTime,
           endTime: availability.endTime,
@@ -149,13 +161,16 @@ export class ScheduleService {
           status: 'available',
           sessionType: availability.sessionTypes[0] || 'personal_training',
           isRecurring: false,
-          price: undefined,
           currency: 'USD',
-          location: availability.location,
           isRemote: availability.isRemote || false,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
+
+        // Add optional location if defined
+        if (availability.location !== undefined) {
+          bookingSlot.location = availability.location;
+        }
 
         const slotRef = doc(collection(db, BOOKING_SLOTS_COLLECTION));
         batch.set(slotRef, bookingSlot);
