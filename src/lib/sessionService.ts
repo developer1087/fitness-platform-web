@@ -68,6 +68,15 @@ export class SessionService {
         sessionData.type
       );
 
+      console.log('🔍 Availability Check Debug:', {
+        date: sessionData.scheduledDate,
+        startTime: sessionData.startTime,
+        duration: sessionData.duration,
+        type: sessionData.type,
+        availableSlotsCount: availableSlots.length,
+        firstFewSlots: availableSlots.slice(0, 5).map(s => `${s.start}-${s.end}`)
+      });
+
       const sessionEndTime = this.calculateEndTime(sessionData.startTime, sessionData.duration);
 
       // Check if the entire session duration fits within available slots
@@ -86,6 +95,14 @@ export class SessionService {
         sessionEndTime,
         availableSlots
       );
+
+      console.log('🔍 Validation Results:', {
+        sessionStart: sessionData.startTime,
+        sessionEnd: sessionEndTime,
+        hasStartSlot,
+        hasEndSlot,
+        isFullyCovered
+      });
 
       if (!hasStartSlot || !hasEndSlot || !isFullyCovered) {
         throw new Error(
