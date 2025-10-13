@@ -69,11 +69,25 @@ export class SessionService {
       );
 
       const sessionEndTime = this.calculateEndTime(sessionData.startTime, sessionData.duration);
-      const isWithinAvailability = availableSlots.some(slot =>
-        slot.start <= sessionData.startTime && slot.end >= sessionEndTime
+
+      // Check if the entire session duration fits within available slots
+      // Session must start within an available slot AND end within available slots
+      const hasStartSlot = availableSlots.some(slot =>
+        sessionData.startTime >= slot.start && sessionData.startTime < slot.end
       );
 
-      if (!isWithinAvailability) {
+      const hasEndSlot = availableSlots.some(slot =>
+        sessionEndTime > slot.start && sessionEndTime <= slot.end
+      );
+
+      // Also check if all intermediate time is covered by availability
+      const isFullyCovered = this.isTimeRangeCovered(
+        sessionData.startTime,
+        sessionEndTime,
+        availableSlots
+      );
+
+      if (!hasStartSlot || !hasEndSlot || !isFullyCovered) {
         throw new Error(
           `Selected time (${sessionData.startTime}) is not within your available hours. Please set your availability first or choose a different time.`
         );
@@ -151,6 +165,52 @@ export class SessionService {
     const date = new Date();
     date.setHours(hours, minutes + durationMinutes);
     return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  }
+
+  // Helper to check if entire time range is covered by available slots
+  private static isTimeRangeCovered(
+    startTime: string,
+    endTime: string,
+    availableSlots: Array<{ start: string; end: string }>
+  ): boolean {
+    if (availableSlots.length === 0) return false;
+
+    // Convert times to minutes for easier comparison
+    const timeToMinutes = (time: string): number => {
+      const [hours, minutes] = time.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+
+    const startMinutes = timeToMinutes(startTime);
+    const endMinutes = timeToMinutes(endTime);
+
+    // Sort slots by start time
+    const sortedSlots = availableSlots
+      .map(slot => ({
+        start: timeToMinutes(slot.start),
+        end: timeToMinutes(slot.end)
+      }))
+      .sort((a, b) => a.start - b.start);
+
+    // Check if the time range is fully covered by contiguous slots
+    let currentCoverage = startMinutes;
+
+    for (const slot of sortedSlots) {
+      // Skip slots that end before our coverage starts
+      if (slot.end <= currentCoverage) continue;
+
+      // If there's a gap, range is not covered
+      if (slot.start > currentCoverage) return false;
+
+      // Extend coverage
+      currentCoverage = Math.max(currentCoverage, slot.end);
+
+      // If we've covered up to or past the end time, we're done
+      if (currentCoverage >= endMinutes) return true;
+    }
+
+    // Check if we reached the end
+    return currentCoverage >= endMinutes;
   }
 
   // Get sessions for a trainer
