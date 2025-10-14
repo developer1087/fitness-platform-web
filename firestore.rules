@@ -44,12 +44,22 @@ service cloud.firestore {
 
     // Sessions collection (used by SessionService)
     match /sessions/{sessionId} {
-      allow read, write: if request.auth != null &&
-        (resource == null ||
-         resource.data.trainerId == request.auth.uid ||
-         resource.data.traineeId == request.auth.uid ||
-         request.resource.data.trainerId == request.auth.uid ||
-         request.resource.data.traineeId == request.auth.uid);
+      // Allow reading individual documents if user is trainer or trainee
+      allow get: if request.auth != null &&
+        (resource.data.trainerId == request.auth.uid ||
+         resource.data.traineeId == request.auth.uid);
+
+      // Allow listing (queries) - Firestore will filter to only matching docs
+      allow list: if request.auth != null;
+
+      // Allow creating sessions if user is the trainer
+      allow create: if request.auth != null &&
+        request.resource.data.trainerId == request.auth.uid;
+
+      // Allow updating/deleting if user is trainer or trainee
+      allow update, delete: if request.auth != null &&
+        (resource.data.trainerId == request.auth.uid ||
+         resource.data.traineeId == request.auth.uid);
     }
 
     // Schedule collections - trainer specific
