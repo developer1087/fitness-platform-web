@@ -265,7 +265,8 @@ export class PaymentService {
     if (!db) return invoices;
 
     const now = new Date();
-    const batch = writeBatch(db);
+    const firestore = db; // Capture db in local variable for TypeScript
+    const batch = writeBatch(firestore);
     let batchCount = 0;
     const maxBatchSize = 500; // Firestore batch limit
 
@@ -276,7 +277,7 @@ export class PaymentService {
 
         // If due date has passed, mark as overdue
         if (now > dueDate) {
-          const invoiceRef = doc(db, INVOICES_COLLECTION, invoice.id);
+          const invoiceRef = doc(firestore, INVOICES_COLLECTION, invoice.id);
           batch.update(invoiceRef, {
             status: 'overdue',
             updatedAt: now.toISOString()
