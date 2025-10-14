@@ -211,11 +211,15 @@ export default function TraineeDetailPage() {
           <div className="mt-6">
             <h3 className="text-sm font-medium text-gray-500 mb-2">Fitness Goals</h3>
             <div className="flex flex-wrap gap-2">
-              {trainee.goals.map((goal, index) => (
-                <span key={index} className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
-                  {goal}
-                </span>
-              ))}
+              {trainee.goals && trainee.goals.length > 0 ? (
+                trainee.goals.map((goal, index) => (
+                  <span key={index} className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
+                    {goal}
+                  </span>
+                ))
+              ) : (
+                <span className="text-sm text-gray-500">No goals set yet</span>
+              )}
             </div>
           </div>
         </div>
