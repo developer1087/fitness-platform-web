@@ -409,9 +409,9 @@ export class PaymentService {
       invoiceIds: paymentData.invoiceIds,
       paymentMethod: paymentData.paymentMethod,
       paymentProcessor: 'manual',
-      transactionId: paymentData.transactionId,
+      ...(paymentData.transactionId && { transactionId: paymentData.transactionId }), // Only include if provided
       status: 'completed',
-      notes: paymentData.notes,
+      ...(paymentData.notes && { notes: paymentData.notes }), // Only include if provided
       createdAt: now,
       updatedAt: now,
     };

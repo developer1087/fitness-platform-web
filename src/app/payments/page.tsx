@@ -463,7 +463,8 @@ function OverviewTab({
 // Invoices Tab Component
 function InvoicesTab({ invoices, trainees, onRecordPayment }: any) {
   const getTraineeName = (traineeId: string) => {
-    const trainee = trainees.find((t: any) => t.id === traineeId);
+    // traineeId in invoice is the Firebase Auth userId, match by userId field in trainee
+    const trainee = trainees.find((t: any) => t.userId === traineeId);
     return trainee ? `${trainee.firstName} ${trainee.lastName}` : traineeId;
   };
 
@@ -562,7 +563,8 @@ function InvoicesTab({ invoices, trainees, onRecordPayment }: any) {
 // Payments Tab Component
 function PaymentsTab({ payments, trainees }: any) {
   const getTraineeName = (traineeId: string) => {
-    const trainee = trainees.find((t: any) => t.id === traineeId);
+    // traineeId in payment is the Firebase Auth userId, match by userId field in trainee
+    const trainee = trainees.find((t: any) => t.userId === traineeId);
     return trainee ? `${trainee.firstName} ${trainee.lastName}` : traineeId;
   };
 
