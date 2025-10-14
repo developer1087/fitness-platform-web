@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { ScheduleService } from './scheduleService';
+import { PaymentService } from './paymentService';
 import type {
   TrainingSession,
   CreateSessionFormData,
@@ -161,6 +162,41 @@ export class SessionService {
       } catch (bookingError) {
         console.warn('Session created but failed to create booking slot:', bookingError);
         // Don't fail the session creation if booking slot creation fails
+      }
+
+      // PAYMENT INTEGRATION: Handle package credit deduction or invoice creation
+      try {
+        if (sessionData.usePackageCredit && sessionData.traineePackageId) {
+          // Deduct one session credit from the trainee's package
+          console.log(`📦 Deducting package credit from package ${sessionData.traineePackageId}`);
+          await PaymentService.usePackageCredit(
+            sessionData.traineePackageId,
+            sessionRef.id
+          );
+          console.log('✅ Package credit deducted successfully');
+        } else if (sessionData.sessionRate && sessionData.sessionRate > 0) {
+          // Create invoice for pay-per-session
+          const createAt = sessionData.createInvoiceAt || 'before_24h';
+          console.log(`💳 Creating ${createAt} invoice for ₪${sessionData.sessionRate}`);
+          await PaymentService.createSessionInvoice(
+            trainerId,
+            sessionData.traineeId,
+            sessionRef.id,
+            {
+              scheduledDate: sessionData.scheduledDate,
+              startTime: sessionData.startTime,
+              sessionRate: sessionData.sessionRate,
+              type: sessionData.type,
+              traineePackageId: sessionData.traineePackageId
+            },
+            createAt
+          );
+          console.log('✅ Invoice created successfully');
+        }
+      } catch (paymentError) {
+        console.warn('Session created but payment processing failed:', paymentError);
+        // Don't fail the session creation if payment processing fails
+        // Trainer can manually handle payment later
       }
 
       return sessionRef.id;

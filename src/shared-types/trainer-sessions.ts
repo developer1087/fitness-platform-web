@@ -276,6 +276,10 @@ export interface CreateSessionFormData {
   templateId?: string; // Use existing template
   sessionRate?: number;
   trainerNotes?: string;
+  // Payment integration
+  usePackageCredit?: boolean; // Should use trainee's package credits?
+  traineePackageId?: string; // Which package to deduct from
+  createInvoiceAt?: 'immediate' | 'before_24h'; // When to generate invoice
 }
 
 export interface SessionLogFormData {

@@ -5,8 +5,10 @@ import { useAuth } from '../../hooks/useAuth';
 import TrainerLayout from '../../components/TrainerLayout';
 import { SessionService } from '../../lib/sessionService';
 import { TraineeService } from '../../lib/traineeService';
+import { PaymentService } from '../../lib/paymentService';
 import type { TrainingSession, CreateSessionFormData } from '../../shared-types/trainer-sessions';
 import type { Trainee } from '../../shared-types';
+import type { TraineePackage } from '../../shared-types/payment/types';
 
 export default function SessionsPage() {
   const { user } = useAuth();
@@ -344,6 +346,7 @@ interface CreateSessionModalProps {
 }
 
 function CreateSessionModal({ trainees, onClose, onSubmit }: CreateSessionModalProps) {
+  const { user } = useAuth();
   const [formData, setFormData] = useState<CreateSessionFormData>({
     traineeId: '',
     title: '',
@@ -353,12 +356,45 @@ function CreateSessionModal({ trainees, onClose, onSubmit }: CreateSessionModalP
     startTime: '',
     duration: 60,
     location: '',
-    sessionRate: 0,
+    sessionRate: 200, // Default session rate in ILS
     trainerNotes: ''
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [traineePackages, setTraineePackages] = useState<TraineePackage[]>([]);
+  const [usePackageCredit, setUsePackageCredit] = useState(false);
+  const [selectedPackageId, setSelectedPackageId] = useState<string>('');
+
+  // Load trainee packages when trainee is selected
+  useEffect(() => {
+    const loadTraineePackages = async () => {
+      if (formData.traineeId && user?.uid) {
+        try {
+          const packages = await PaymentService.getTraineePackages(formData.traineeId, user.uid);
+          const activePackages = packages.filter(p => p.status === 'active' && p.remainingSessions > 0);
+          setTraineePackages(activePackages);
+
+          // Auto-select first active package if available
+          if (activePackages.length > 0) {
+            setSelectedPackageId(activePackages[0].id);
+            setUsePackageCredit(true);
+          } else {
+            setUsePackageCredit(false);
+            setSelectedPackageId('');
+          }
+        } catch (err) {
+          console.error('Error loading trainee packages:', err);
+        }
+      } else {
+        setTraineePackages([]);
+        setUsePackageCredit(false);
+        setSelectedPackageId('');
+      }
+    };
+
+    loadTraineePackages();
+  }, [formData.traineeId, user?.uid]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -376,7 +412,15 @@ function CreateSessionModal({ trainees, onClose, onSubmit }: CreateSessionModalP
 
     setLoading(true);
     try {
-      await onSubmit(formData);
+      // Include payment information in the session data
+      const sessionDataWithPayment: CreateSessionFormData = {
+        ...formData,
+        usePackageCredit,
+        traineePackageId: usePackageCredit ? selectedPackageId : undefined,
+        createInvoiceAt: usePackageCredit ? undefined : 'before_24h' // Create invoice 24h before if not using package
+      };
+
+      await onSubmit(sessionDataWithPayment);
     } catch (err) {
       console.error('Error submitting form:', err);
     } finally {
@@ -527,6 +571,65 @@ function CreateSessionModal({ trainees, onClose, onSubmit }: CreateSessionModalP
                 placeholder="Pre-session notes, goals, or reminders..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+
+            {/* Payment Section */}
+            <div className="border-t border-gray-200 pt-4 mt-4">
+              <h4 className="text-md font-semibold text-gray-900 mb-3">Payment & Billing</h4>
+
+              {traineePackages.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="usePackageCredit"
+                      checked={usePackageCredit}
+                      onChange={(e) => setUsePackageCredit(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="usePackageCredit" className="text-sm font-medium text-gray-700">
+                      Use trainee's package credit (מנוי)
+                    </label>
+                  </div>
+
+                  {usePackageCredit && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Select Package</label>
+                      <select
+                        value={selectedPackageId}
+                        onChange={(e) => setSelectedPackageId(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {traineePackages.map((pkg) => (
+                          <option key={pkg.id} value={pkg.id}>
+                            {pkg.packageName} - {pkg.remainingSessions} sessions remaining
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        One session credit will be deducted from this package
+                      </p>
+                    </div>
+                  )}
+
+                  {!usePackageCredit && (
+                    <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-md">
+                      <p className="text-sm text-yellow-800">
+                        💳 <strong>Pay-per-session:</strong> Invoice of ₪{formData.sessionRate} will be generated 24h before the session
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-blue-50 border border-blue-200 p-3 rounded-md">
+                  <p className="text-sm text-blue-800">
+                    💳 <strong>Pay-per-session:</strong> Invoice of ₪{formData.sessionRate} will be generated 24h before the session
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Trainee has no active packages. They can purchase a package from the Payments page.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">

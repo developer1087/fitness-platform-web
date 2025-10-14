@@ -5,7 +5,11 @@ import { useAuth } from '../../../hooks/useAuth';
 import TrainerLayout from '../../../components/TrainerLayout';
 import { useParams } from 'next/navigation';
 import { TraineeService } from '../../../lib/traineeService';
+import { PaymentService } from '../../../lib/paymentService';
+import { SessionService } from '../../../lib/sessionService';
 import { Trainee } from '../../../shared-types';
+import type { Invoice, TraineePackage } from '../../../shared-types/payment/types';
+import type { TrainingSession } from '../../../shared-types/trainer-sessions';
 
 
 export default function TraineeDetailPage() {
@@ -14,6 +18,9 @@ export default function TraineeDetailPage() {
   const id = params?.id as string;
   const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'payments' | 'notes'>('overview');
   const [trainee, setTrainee] = useState<Trainee | null>(null);
+  const [sessions, setSessions] = useState<TrainingSession[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [packages, setPackages] = useState<TraineePackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -27,14 +34,24 @@ export default function TraineeDetailPage() {
   }, [id, user]);
 
   const loadTrainee = async () => {
-    if (!id) return;
+    if (!id || !user?.uid) return;
 
     setLoading(true);
     setError(null);
     try {
-      const traineeData = await TraineeService.getTraineeById(id);
+      // Load all data in parallel
+      const [traineeData, sessionsData, invoicesData, packagesData] = await Promise.all([
+        TraineeService.getTraineeById(id),
+        SessionService.getTraineeSessions(id),
+        PaymentService.getTraineeInvoices(id, user.uid),
+        PaymentService.getTraineePackages(id, user.uid)
+      ]);
+
       if (traineeData) {
         setTrainee(traineeData);
+        setSessions(sessionsData || []);
+        setInvoices(invoicesData || []);
+        setPackages(packagesData || []);
       } else {
         setError('Trainee not found');
       }
@@ -252,28 +269,192 @@ export default function TraineeDetailPage() {
             {activeTab === 'sessions' && (
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium text-gray-900">Session History</h3>
+                  <h3 className="text-lg font-medium text-gray-900">Session History ({sessions.length} total)</h3>
                   <button className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
                     Schedule New Session
                   </button>
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
-                  <p className="text-blue-700 text-sm">
-                    📅 Session management features will be implemented in the next update. You can currently track total sessions: <strong>{trainee.totalSessions}</strong>
-                  </p>
-                </div>
+                {sessions.length === 0 ? (
+                  <div className="bg-gray-50 border border-gray-200 p-8 rounded-lg text-center">
+                    <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No sessions yet</h3>
+                    <p className="mt-1 text-sm text-gray-500">Schedule the first training session with this trainee.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {sessions.map((session) => (
+                          <tr key={session.id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {new Date(session.scheduledDate).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {session.startTime} - {session.endTime || `+${session.duration}min`}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {session.type}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                session.status === 'completed'
+                                  ? 'bg-green-100 text-green-800'
+                                  : session.status === 'scheduled'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : session.status === 'cancelled'
+                                  ? 'bg-gray-100 text-gray-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {session.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                              {session.trainerNotes || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
             {activeTab === 'payments' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900">Payment History</h3>
+              <div className="space-y-6">
+                {/* Active Packages */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Active Packages (מנויים)</h3>
+                  {packages.filter(p => p.status === 'active').length === 0 ? (
+                    <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg">
+                      <p className="text-gray-600 text-sm">No active packages. Trainee can purchase packages from the payments page.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {packages.filter(p => p.status === 'active').map((pkg) => (
+                        <div key={pkg.id} className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="font-semibold text-gray-900">{pkg.packageName}</h4>
+                            <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                              Active
+                            </span>
+                          </div>
+                          <div className="space-y-1 text-sm">
+                            <p className="text-gray-700">
+                              <strong>{pkg.remainingSessions}</strong> of {pkg.totalSessions} sessions remaining
+                            </p>
+                            <p className="text-gray-600">
+                              Purchased: {new Date(pkg.purchaseDate).toLocaleDateString()}
+                            </p>
+                            <p className="text-gray-600">
+                              Expires: {new Date(pkg.expiryDate).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="mt-3">
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div
+                                className="bg-blue-600 h-2 rounded-full transition-all"
+                                style={{ width: `${(pkg.remainingSessions / pkg.totalSessions) * 100}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-                <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
-                  <p className="text-green-700 text-sm">
-                    💳 Payment management features will be implemented in the next update. This will include payment tracking, invoicing, and revenue analytics.
-                  </p>
+                {/* Invoices */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Invoices & Billing</h3>
+                  {invoices.length === 0 ? (
+                    <div className="bg-gray-50 border border-gray-200 p-8 rounded-lg text-center">
+                      <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <h3 className="mt-2 text-sm font-medium text-gray-900">No invoices yet</h3>
+                      <p className="mt-1 text-sm text-gray-500">Invoices will appear here when sessions are booked.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {invoices.map((invoice) => (
+                            <tr key={invoice.id}>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {invoice.type === 'package' ? 'Package' : 'Session'}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-gray-900">
+                                {invoice.description}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                ₪{invoice.amount.toLocaleString()}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {new Date(invoice.dueDate).toLocaleDateString()}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                  invoice.status === 'paid'
+                                    ? 'bg-green-100 text-green-800'
+                                    : invoice.status === 'pending'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : invoice.status === 'overdue'
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {invoice.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Payment Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white border border-gray-200 p-4 rounded-lg">
+                    <p className="text-sm text-gray-500">Total Paid</p>
+                    <p className="text-2xl font-semibold text-green-600">
+                      ₪{invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.amount, 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-white border border-gray-200 p-4 rounded-lg">
+                    <p className="text-sm text-gray-500">Pending</p>
+                    <p className="text-2xl font-semibold text-yellow-600">
+                      ₪{invoices.filter(i => i.status === 'pending').reduce((sum, i) => sum + i.amount, 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-white border border-gray-200 p-4 rounded-lg">
+                    <p className="text-sm text-gray-500">Overdue</p>
+                    <p className="text-2xl font-semibold text-red-600">
+                      ₪{invoices.filter(i => i.status === 'overdue').reduce((sum, i) => sum + i.amount, 0).toLocaleString()}
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
