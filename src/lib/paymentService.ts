@@ -137,8 +137,8 @@ export class PaymentService {
     );
   }
 
-  // Use a session credit from package
-  static async usePackageCredit(traineePackageId: string, sessionId: string): Promise<void> {
+  // Deduct a session credit from package
+  static async deductPackageCredit(traineePackageId: string, sessionId: string): Promise<void> {
     if (!db) throw new Error('Firestore not initialized');
     
     const packageRef = doc(db, TRAINEE_PACKAGES_COLLECTION, traineePackageId);

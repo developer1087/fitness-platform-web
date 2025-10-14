@@ -169,7 +169,7 @@ export class SessionService {
         if (sessionData.usePackageCredit && sessionData.traineePackageId) {
           // Deduct one session credit from the trainee's package
           console.log(`📦 Deducting package credit from package ${sessionData.traineePackageId}`);
-          await PaymentService.usePackageCredit(
+          await PaymentService.deductPackageCredit(
             sessionData.traineePackageId,
             sessionRef.id
           );
