@@ -260,10 +260,53 @@ export class PaymentService {
     return docRef.id;
   }
 
+  // Helper: Check and update overdue invoices
+  private static async updateOverdueInvoices(invoices: Invoice[]): Promise<Invoice[]> {
+    if (!db) return invoices;
+
+    const now = new Date();
+    const batch = writeBatch(db);
+    let batchCount = 0;
+    const maxBatchSize = 500; // Firestore batch limit
+
+    const updatedInvoices = invoices.map(invoice => {
+      // Only check pending invoices
+      if (invoice.status === 'pending' && invoice.dueDate) {
+        const dueDate = new Date(invoice.dueDate);
+
+        // If due date has passed, mark as overdue
+        if (now > dueDate) {
+          const invoiceRef = doc(db, INVOICES_COLLECTION, invoice.id);
+          batch.update(invoiceRef, {
+            status: 'overdue',
+            updatedAt: now.toISOString()
+          });
+          batchCount++;
+
+          // Return updated invoice
+          return { ...invoice, status: 'overdue' as Invoice['status'] };
+        }
+      }
+      return invoice;
+    });
+
+    // Commit batch if there are updates
+    if (batchCount > 0 && batchCount <= maxBatchSize) {
+      try {
+        await batch.commit();
+        console.log(`✅ Updated ${batchCount} invoices to overdue status`);
+      } catch (error) {
+        console.error('Error updating overdue invoices:', error);
+      }
+    }
+
+    return updatedInvoices;
+  }
+
   // Get trainer's invoices
   static async getTrainerInvoices(trainerId: string, status?: Invoice['status']): Promise<Invoice[]> {
     if (!db) return [];
-    
+
     let q = query(
       collection(db, INVOICES_COLLECTION),
       where('trainerId', '==', trainerId),
@@ -275,13 +318,16 @@ export class PaymentService {
     }
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
+    const invoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
+
+    // Check and update overdue invoices
+    return await this.updateOverdueInvoices(invoices);
   }
 
   // Get trainee's invoices
   static async getTraineeInvoices(traineeId: string, trainerId?: string): Promise<Invoice[]> {
     if (!db) return [];
-    
+
     let q = query(
       collection(db, INVOICES_COLLECTION),
       where('traineeId', '==', traineeId),
@@ -293,7 +339,10 @@ export class PaymentService {
     }
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
+    const invoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
+
+    // Check and update overdue invoices
+    return await this.updateOverdueInvoices(invoices);
   }
 
   // Cancel invoice (if within cancellation window)
