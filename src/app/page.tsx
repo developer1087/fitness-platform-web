@@ -155,7 +155,7 @@ export default function HomePage() {
 
         // Sort all activity by timestamp (most recent first) and take top 8
         const sortedActivity = allActivity
-          .sort((a, b) => b.timestamp - a.timestamp)
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
           .slice(0, 8)
           .map(({ timestamp, ...rest }) => rest); // Remove timestamp from final objects
 
