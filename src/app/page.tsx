@@ -24,6 +24,7 @@ interface RecentActivity {
   time: string;
   icon: string;
   iconColor: string;
+  timestamp?: number; // Temporary field for sorting
 }
 
 // Helper function to format time ago
@@ -67,11 +68,12 @@ export default function HomePage() {
         const currentMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
         const currentYear = now.getFullYear();
 
-        const [trainees, todaySessions, allSessions, paymentSummary] = await Promise.all([
+        const [trainees, todaySessions, allSessions, paymentSummary, recentPayments] = await Promise.all([
           TraineeService.getTraineesByTrainer(user.uid),
           SessionService.getTodaySessions(user.uid),
           SessionService.getTrainerSessions(user.uid),
-          PaymentService.getPaymentSummary(user.uid, currentYear, currentMonth)
+          PaymentService.getPaymentSummary(user.uid, currentYear, currentMonth),
+          PaymentService.getTrainerPayments(user.uid)
         ]);
 
         // Calculate stats from real data
@@ -101,20 +103,63 @@ export default function HomePage() {
           todaySessions: todaySessions.length
         });
 
-        // Create recent activity from trainees
-        const recentActivity: RecentActivity[] = trainees
-          .sort((a, b) => new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime())
-          .slice(0, 4)
-          .map((trainee) => ({
-            id: trainee.id,
+        // Create recent activity from multiple sources
+        const allActivity: RecentActivity[] = [];
+
+        // Add trainee joins
+        trainees.forEach((trainee) => {
+          allActivity.push({
+            id: `trainee-${trainee.id}`,
             type: 'trainee_joined' as const,
             message: `${trainee.firstName} ${trainee.lastName} joined as trainee`,
             time: getTimeAgo(new Date(trainee.joinDate)),
+            timestamp: new Date(trainee.joinDate).getTime(),
             icon: 'user',
             iconColor: 'text-blue-600'
-          }));
+          });
+        });
 
-        setRecentActivity(recentActivity);
+        // Add recent session bookings (from all sessions, not just today's)
+        allSessions.forEach((session) => {
+          if (session.createdAt) {
+            const trainee = trainees.find((t) => t.userId === session.traineeId);
+            const traineeName = trainee ? `${trainee.firstName} ${trainee.lastName}` : 'Unknown Trainee';
+            allActivity.push({
+              id: `session-${session.id}`,
+              type: 'session_scheduled' as const,
+              message: `Session booked with ${traineeName} on ${session.scheduledDate}`,
+              time: getTimeAgo(new Date(session.createdAt)),
+              timestamp: new Date(session.createdAt).getTime(),
+              icon: 'calendar',
+              iconColor: 'text-green-600'
+            });
+          }
+        });
+
+        // Add recent payments
+        recentPayments.forEach((payment) => {
+          if (payment.createdAt) {
+            const trainee = trainees.find((t) => t.userId === payment.traineeId);
+            const traineeName = trainee ? `${trainee.firstName} ${trainee.lastName}` : 'Unknown Trainee';
+            allActivity.push({
+              id: `payment-${payment.id}`,
+              type: 'payment_received' as const,
+              message: `Payment of ₪${payment.amount} received from ${traineeName}`,
+              time: getTimeAgo(new Date(payment.createdAt)),
+              timestamp: new Date(payment.createdAt).getTime(),
+              icon: 'dollar',
+              iconColor: 'text-yellow-600'
+            });
+          }
+        });
+
+        // Sort all activity by timestamp (most recent first) and take top 8
+        const sortedActivity = allActivity
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 8)
+          .map(({ timestamp, ...rest }) => rest); // Remove timestamp from final objects
+
+        setRecentActivity(sortedActivity);
 
       } catch (error) {
         console.error('Error loading dashboard data:', error);
@@ -301,23 +346,23 @@ export default function HomePage() {
                 </div>
               </a>
 
-              <button className="w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
+              <a href="/sessions" className="block w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
                 <div className="flex items-center">
                   <svg className="h-5 w-5 text-green-600 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 12V7m6 0v14m-6-4h6" />
                   </svg>
                   <span className="font-medium text-gray-900">Schedule Session</span>
                 </div>
-              </button>
+              </a>
 
-              <button className="w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 rounded-lg transition-colors">
+              <a href="/payments" className="block w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 rounded-lg transition-colors">
                 <div className="flex items-center">
                   <svg className="h-5 w-5 text-yellow-600 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <span className="font-medium text-gray-900">View Reports</span>
+                  <span className="font-medium text-gray-900">View Payments & Reports</span>
                 </div>
-              </button>
+              </a>
             </div>
           </div>
 
