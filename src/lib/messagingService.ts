@@ -49,6 +49,13 @@ class MessagingService {
   private readonly CONVERSATIONS_COLLECTION = 'conversations';
   private readonly MESSAGES_COLLECTION = 'messages';
 
+  private getDb() {
+    if (!db) {
+      throw new Error('Firebase is not initialized');
+    }
+    return db;
+  }
+
   async sendMessage(messageData: Omit<Message, 'id' | 'timestamp' | 'isRead'>): Promise<Message> {
     try {
       const timestamp = new Date().toISOString();
@@ -59,7 +66,7 @@ class MessagingService {
       };
 
       // Save message to Firestore
-      const messagesCollection = collection(db, this.MESSAGES_COLLECTION);
+      const messagesCollection = collection(this.getDb(), this.MESSAGES_COLLECTION);
       const messageRef = await addDoc(messagesCollection, message);
 
       const savedMessage = { ...message, id: messageRef.id };
@@ -90,7 +97,7 @@ class MessagingService {
       };
 
       // Update or create conversation in Firestore
-      const conversationRef = doc(db, this.CONVERSATIONS_COLLECTION, message.conversationId);
+      const conversationRef = doc(this.getDb(), this.CONVERSATIONS_COLLECTION, message.conversationId);
       await setDoc(conversationRef, conversation, { merge: true });
 
       console.log('✅ Conversation updated:', message.conversationId);
@@ -102,7 +109,7 @@ class MessagingService {
 
   async getConversationMessages(conversationId: string): Promise<Message[]> {
     try {
-      const messagesCollection = collection(db, this.MESSAGES_COLLECTION);
+      const messagesCollection = collection(this.getDb(), this.MESSAGES_COLLECTION);
       const q = query(
         messagesCollection,
         where('conversationId', '==', conversationId),
@@ -129,7 +136,7 @@ class MessagingService {
     conversationId: string,
     callback: (messages: Message[]) => void
   ): () => void {
-    const messagesCollection = collection(db, this.MESSAGES_COLLECTION);
+    const messagesCollection = collection(this.getDb(), this.MESSAGES_COLLECTION);
     const q = query(
       messagesCollection,
       where('conversationId', '==', conversationId),
@@ -157,7 +164,7 @@ class MessagingService {
     try {
       const field = userType === 'trainer' ? 'trainerId' : 'traineeId';
 
-      const conversationsCollection = collection(db, this.CONVERSATIONS_COLLECTION);
+      const conversationsCollection = collection(this.getDb(), this.CONVERSATIONS_COLLECTION);
       const q = query(
         conversationsCollection,
         where(field, '==', userId),
@@ -193,7 +200,7 @@ class MessagingService {
   ): () => void {
     const field = userType === 'trainer' ? 'trainerId' : 'traineeId';
 
-    const conversationsCollection = collection(db, this.CONVERSATIONS_COLLECTION);
+    const conversationsCollection = collection(this.getDb(), this.CONVERSATIONS_COLLECTION);
     const q = query(
       conversationsCollection,
       where(field, '==', userId),
@@ -226,7 +233,7 @@ class MessagingService {
 
   private async getUnreadCount(conversationId: string, userId: string): Promise<number> {
     try {
-      const messagesCollection = collection(db, this.MESSAGES_COLLECTION);
+      const messagesCollection = collection(this.getDb(), this.MESSAGES_COLLECTION);
       const q = query(
         messagesCollection,
         where('conversationId', '==', conversationId),
@@ -245,7 +252,7 @@ class MessagingService {
   async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
     try {
       // Get unread messages for this user
-      const messagesCollection = collection(db, this.MESSAGES_COLLECTION);
+      const messagesCollection = collection(this.getDb(), this.MESSAGES_COLLECTION);
       const q = query(
         messagesCollection,
         where('conversationId', '==', conversationId),
@@ -255,7 +262,7 @@ class MessagingService {
       const unreadSnapshot = await getDocs(q);
 
       // Batch update all unread messages
-      const batch = writeBatch(db);
+      const batch = writeBatch(this.getDb());
       unreadSnapshot.docs.forEach(document => {
         batch.update(document.ref, { isRead: true });
       });
@@ -269,7 +276,7 @@ class MessagingService {
 
   async getTotalUnreadCount(userId: string): Promise<number> {
     try {
-      const messagesCollection = collection(db, this.MESSAGES_COLLECTION);
+      const messagesCollection = collection(this.getDb(), this.MESSAGES_COLLECTION);
       const q = query(
         messagesCollection,
         where('recipientId', '==', userId),
@@ -304,7 +311,7 @@ class MessagingService {
       isActive: true
     };
 
-    const conversationRef = doc(db, this.CONVERSATIONS_COLLECTION, conversationId);
+    const conversationRef = doc(this.getDb(), this.CONVERSATIONS_COLLECTION, conversationId);
     await setDoc(conversationRef, conversation, { merge: true });
 
     console.log('✅ Conversation created:', conversationId);
