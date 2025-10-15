@@ -671,13 +671,10 @@ export class SessionService {
 
   // Get today's sessions for a trainer
   static async getTodaySessions(trainerId: string): Promise<TrainingSession[]> {
-    const today = new Date();
-    const tomorrow = new Date();
-    tomorrow.setDate(today.getDate() + 1);
+    const today = new Date().toISOString().split('T')[0]; // Get YYYY-MM-DD format
 
-    return this.getTrainerSessions(trainerId, {
-      startDate: today.toISOString(),
-      endDate: tomorrow.toISOString()
-    });
+    // Get all sessions and filter by today's date
+    const allSessions = await this.getTrainerSessions(trainerId, { limit: 100 });
+    return allSessions.filter(session => session.scheduledDate === today);
   }
 }

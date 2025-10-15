@@ -12,50 +12,70 @@ import type { TraineePackage } from '../../shared-types/payment/types';
 
 export default function SessionsPage() {
   const { user } = useAuth();
-  const [sessions, setSessions] = useState<TrainingSession[]>([]);
+  const [allSessions, setAllSessions] = useState<TrainingSession[]>([]); // Store ALL sessions
+  const [sessions, setSessions] = useState<TrainingSession[]>([]); // Filtered sessions for display
   const [trainees, setTrainees] = useState<Trainee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'today' | 'upcoming' | 'completed'>('today');
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  // Load data
+  // Load all sessions once
   useEffect(() => {
     if (user?.uid) {
-      loadSessions();
+      loadAllSessions();
       loadTrainees();
     }
-  }, [user, activeTab]);
+  }, [user]);
 
-  const loadSessions = async () => {
+  // Filter sessions when tab changes
+  useEffect(() => {
+    filterSessions();
+  }, [activeTab, allSessions]);
+
+  const loadAllSessions = async () => {
     if (!user?.uid) return;
 
     setLoading(true);
     setError(null);
     try {
-      let sessionData: TrainingSession[] = [];
-
-      switch (activeTab) {
-        case 'today':
-          sessionData = await SessionService.getTodaySessions(user.uid);
-          break;
-        case 'upcoming':
-          sessionData = await SessionService.getUpcomingSessions(user.uid);
-          break;
-        case 'completed':
-          sessionData = await SessionService.getTrainerSessions(user.uid, { status: 'completed', limit: 20 });
-          break;
-        default:
-          sessionData = await SessionService.getTrainerSessions(user.uid, { limit: 50 });
-      }
-
-      setSessions(sessionData);
+      // Load ALL sessions at once
+      const sessionData = await SessionService.getTrainerSessions(user.uid, { limit: 100 });
+      setAllSessions(sessionData);
     } catch (err) {
       console.error('Error loading sessions:', err);
       setError('Failed to load sessions');
     } finally {
       setLoading(false);
     }
+  };
+
+  const filterSessions = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
+
+    let filtered: TrainingSession[] = [];
+
+    switch (activeTab) {
+      case 'today':
+        filtered = allSessions.filter(s =>
+          s.scheduledDate === todayStr
+        );
+        break;
+      case 'upcoming':
+        filtered = allSessions.filter(s =>
+          s.scheduledDate > todayStr && s.status !== 'completed' && s.status !== 'cancelled'
+        );
+        break;
+      case 'completed':
+        filtered = allSessions.filter(s => s.status === 'completed');
+        break;
+      default:
+        filtered = allSessions;
+    }
+
+    setSessions(filtered);
   };
 
   const loadTrainees = async () => {
@@ -75,7 +95,7 @@ export default function SessionsPage() {
     try {
       await SessionService.createSession(user.uid, sessionData);
       setShowCreateModal(false);
-      loadSessions(); // Refresh the list
+      loadAllSessions(); // Refresh the list
     } catch (err) {
       console.error('Error creating session:', err);
       setError('Failed to create session');
@@ -85,7 +105,7 @@ export default function SessionsPage() {
   const handleStatusUpdate = async (sessionId: string, status: TrainingSession['status']) => {
     try {
       await SessionService.updateSessionStatus(sessionId, status);
-      loadSessions(); // Refresh the list
+      loadAllSessions(); // Refresh the list
     } catch (err) {
       console.error('Error updating session status:', err);
       setError('Failed to update session');
@@ -165,15 +185,32 @@ export default function SessionsPage() {
         <div className="mb-6">
           <nav className="flex space-x-8">
             {[
-              { key: 'today', label: 'Today', count: sessions.filter(s => {
-                const today = new Date().toDateString();
-                return new Date(s.scheduledDate).toDateString() === today;
-              }).length },
-              { key: 'upcoming', label: 'Upcoming', count: sessions.filter(s =>
-                new Date(s.scheduledDate) > new Date() && s.status !== 'completed'
-              ).length },
-              { key: 'completed', label: 'Completed', count: sessions.filter(s => s.status === 'completed').length },
-              { key: 'all', label: 'All Sessions', count: sessions.length }
+              {
+                key: 'today',
+                label: 'Today',
+                count: allSessions.filter(s => {
+                  const today = new Date().toISOString().split('T')[0];
+                  return s.scheduledDate === today;
+                }).length
+              },
+              {
+                key: 'upcoming',
+                label: 'Upcoming',
+                count: allSessions.filter(s => {
+                  const today = new Date().toISOString().split('T')[0];
+                  return s.scheduledDate > today && s.status !== 'completed' && s.status !== 'cancelled';
+                }).length
+              },
+              {
+                key: 'completed',
+                label: 'Completed',
+                count: allSessions.filter(s => s.status === 'completed').length
+              },
+              {
+                key: 'all',
+                label: 'All Sessions',
+                count: allSessions.length
+              }
             ].map((tab) => (
               <button
                 key={tab.key}
