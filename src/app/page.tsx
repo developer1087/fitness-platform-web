@@ -363,6 +363,15 @@ export default function HomePage() {
                   <span className="font-medium text-gray-900">View Payments & Reports</span>
                 </div>
               </a>
+
+              <a href="/messages" className="block w-full text-left p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
+                <div className="flex items-center">
+                  <svg className="h-5 w-5 text-purple-600 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  </svg>
+                  <span className="font-medium text-gray-900">Messages</span>
+                </div>
+              </a>
             </div>
           </div>
 
