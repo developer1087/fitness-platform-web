@@ -22,6 +22,10 @@ export interface TrainingSession {
   duration: number; // minutes
   location?: string;
 
+  // Remote session support
+  sessionFormat?: 'in_person' | 'remote' | 'hybrid'; // How the session is conducted
+  meetingLink?: string; // Video call URL for remote sessions (Zoom, Meet, Teams, etc.)
+
   // Workout Data
   workoutId?: string; // Reference to Workout if pre-planned
   workout?: Workout; // Populated workout data
@@ -54,15 +58,11 @@ export interface TrainingSession {
 }
 
 export type SessionType =
-  | 'personal_training'
-  | 'group_training'
-  | 'assessment'
-  | 'consultation'
-  | 'follow_up'
-  | 'rehabilitation'
-  | 'nutrition_coaching'
-  | 'form_check'
-  | 'virtual_session';
+  | 'personal_training' // 1-on-1 training
+  | 'group_training'    // Group class
+  | 'assessment'        // Fitness assessment
+  | 'consultation'      // Discussion/planning
+  | 'follow_up';        // Follow-up session
 
 export type SessionStatus =
   | 'scheduled'
@@ -273,6 +273,8 @@ export interface CreateSessionFormData {
   startTime: string;
   duration: number;
   location?: string;
+  sessionFormat?: 'in_person' | 'remote' | 'hybrid'; // How session is conducted
+  meetingLink?: string; // Video call URL for remote sessions
   templateId?: string; // Use existing template
   sessionRate?: number;
   trainerNotes?: string;

@@ -574,20 +574,33 @@ function CreateSessionModal({ trainees, onClose, onSubmit }: CreateSessionModalP
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Session Format</label>
+                <select
+                  value={formData.sessionFormat || 'in_person'}
+                  onChange={(e) => setFormData({ ...formData, sessionFormat: e.target.value as any })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="in_person">In-Person</option>
+                  <option value="remote">Remote (Video Call)</option>
+                  <option value="hybrid">Hybrid</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
                 <input
                   type="text"
                   value={formData.location}
                   onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                  placeholder="e.g., Main Gym, Studio A"
+                  placeholder={formData.sessionFormat === 'remote' ? 'Online' : 'e.g., Main Gym, Studio A'}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Session Rate ($)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Session Rate (₪)</label>
                 <input
                   type="number"
                   min="0"
@@ -598,6 +611,25 @@ function CreateSessionModal({ trainees, onClose, onSubmit }: CreateSessionModalP
                 />
               </div>
             </div>
+
+            {/* Meeting Link for Remote Sessions */}
+            {(formData.sessionFormat === 'remote' || formData.sessionFormat === 'hybrid') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Meeting Link <span className="text-blue-600">(required for remote sessions)</span>
+                </label>
+                <input
+                  type="url"
+                  value={formData.meetingLink || ''}
+                  onChange={(e) => setFormData({ ...formData, meetingLink: e.target.value })}
+                  placeholder="e.g., https://zoom.us/j/1234567890 or https://meet.google.com/abc-defg-hij"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Paste the video call link (Zoom, Google Meet, Microsoft Teams, etc.)
+                </p>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Trainer Notes</label>
